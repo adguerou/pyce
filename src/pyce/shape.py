@@ -63,7 +63,6 @@ def get_massif_names(gdf):
 
 
 def remove_bad_geometry(gdf: gpd.GeoDataFrame):
-
     return gdf.iloc[np.where(gdf["geometry"].values != None)[0]]
 
 
