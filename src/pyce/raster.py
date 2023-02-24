@@ -1,8 +1,11 @@
+import os
 from threading import Lock
 
 import geopandas as gpd
 import numpy as np
+import richdem as rd
 import rioxarray as rioxr
+import xarray as xr
 
 
 def crop_raster_from_shp(
@@ -86,3 +89,70 @@ def distance_meter_from_deg(rio_ds: rioxr, crs: int = 3035) -> float:
     points = points.to_crs(crs)
 
     return points[0].distance(points[1])
+
+
+def rd_terrain_slope_and_aspect(
+    mnt_file: str, projection: str, save_file_slope=None, save_file_aspect=None
+):
+
+    # Open file and add projection
+    rda = rd.LoadGDAL(mnt_file)
+    rda.projection = projection
+
+    # Derive slope
+    slope = rd.TerrainAttribute(rda, attrib="slope_degrees")
+
+    # Set points with no slope to no data / to get no orrientation
+    rda[slope == 0.0] = rda.no_data
+
+    # Derive aspect
+    aspect = rd.TerrainAttribute(rda, attrib="aspect")
+
+    # Savings
+    if save_file_slope is not None:
+        rd.SaveGDAL(save_file_slope, slope)
+    if save_file_aspect is not None:
+        rd.SaveGDAL(save_file_aspect, aspect)
+
+
+def mnt_interp_like(
+    mnt_file: str,
+    projection: str,
+    ds_like: xr.DataArray,
+    save_file=None,
+    extensions=None,
+):
+
+    # # Deal with multiple files when extensions given
+    # mnt_files = [mnt_file]
+    # save_files = [save_file]
+    #
+    # if extensions is not None:
+    #     mnt_filename, mnt_file_extension = os.path.splitext(mnt_file)
+    #     save_filename, save_file_extension = os.path.splitext(save_file)
+    #
+    #     for ext in extensions:
+    #         mnt_files.append(mnt_filename + ext + mnt_file_extension)
+    #         save_files.append(save_filename + ext + save_file_extension)
+
+    # Open mnt raster
+    ds_mnt = rioxr.open_rasterio(
+        mnt_file, chunks={"x": 100, "y": 100}, mask_and_scale=True
+    )
+
+    ds_mnt = ds_mnt.rio.write_crs(projection, inplace=True)
+    bounds = ds_mnt.rio.bounds()
+
+    # Clip the dataset to be interpolated on to the raster limits
+    # ds_like = rioxr.open_rasterio(ds_like_file, chunks={"x": 5000, "y": 5000})
+    ds_like_clip = ds_like.rio.clip_box(bounds[0], bounds[1], bounds[2], bounds[3])
+
+    # Do the interpolation + rewrite nodata
+    ds_mnt_interp = ds_mnt["band" == 1].interp_like(ds_like_clip["band" == 1])
+    ds_mnt_interp.rio.write_nodata(
+        ds_mnt.rio.encoded_nodata, inplace=True, encoded=True
+    )
+
+    # Save files
+    if save_file is not None:
+        ds_mnt_interp.rio.to_raster(save_file, compute=False)
