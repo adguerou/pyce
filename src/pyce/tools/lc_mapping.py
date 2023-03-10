@@ -316,14 +316,77 @@ class LandCoverMap:
                     in_place=in_place,
                 )
 
+    def swap_rows_from_index(self, id1, id2, in_place=False):
+        """
+        Swap two rows of the lcmap dataframe based on their index values
+
+        :param id1: first index to swap
+        :param id2: second index to swap with
+        :param in_place: If True, modify the dataframe, otherwise return a new object
+          !!! not working properly so far !!!!
+        :return: LandCoverMap object if in_place is False
+        """
+        # TODO: in_place is not working properly
+        row_1 = self.df.iloc[id1].copy()
+        row_2 = self.df.iloc[id2].copy()
+
+        if in_place:
+            self.df.iloc[id1] = row_2
+            self.df.iloc[id2] = row_1
+        else:
+            lc_map = copy.copy(self)
+            lc_map.df.iloc[id1] = row_2
+            lc_map.df.iloc[id2] = row_1
+
+            return lc_map
+
+    def swap_rows_from_col_val(self, col_name, val1, val2, in_place=False):
+
+        """
+        Swap two rows of the lcmap dataframe based on their values of a given column
+
+        :param col_name: Name of the dataframe column to use
+        :param val1: first column value of the row to swap
+        :param val2: second column value of the row to swap
+        :param in_place: If True, modify the dataframe, otherwise return a new object
+            !!! not working properly so far !!!!
+        :return: LandCoverMap object if in_place is False
+        """
+        # TODO: in_place is not working properly
+        id_1 = self.df.loc[self.df[col_name] == val1].index
+        id_2 = self.df.loc[self.df[col_name] == val2].index
+
+        if in_place:
+            self.swap_rows_from_index(id_1, id_2, in_place=in_place)
+        else:
+            return self.swap_rows_from_index(id_1, id_2, in_place=in_place)
+
     def clip_from_ds(self, ds: xarray, in_place=False):
         """
+        Remove all rows (e.g. based on the code value) not present in dataset
 
         :param ds:
         :param in_place:
         :return:
         """
         sel = np.unique(ds.data[~np.isnan(ds.data)])
+
+        if in_place is True:
+            self.df = self.df.loc[self.df[_code_name].isin(sel)]
+        else:
+            lc_map = copy.copy(self)
+            lc_map.df = lc_map.df.loc[lc_map.df[_code_name].isin(sel)]
+            return lc_map
+
+    def clip_from_df(self, df: pd.Series, in_place=False):
+        """
+        Remove all rows (e.g. based on the code value) not present in pandas Series
+
+        :param df:
+        :param in_place:
+        :return:
+        """
+        sel = np.unique(df.loc[~np.isnan(df)])
 
         if in_place is True:
             self.df = self.df.loc[self.df[_code_name].isin(sel)]
