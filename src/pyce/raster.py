@@ -47,7 +47,7 @@ def crop_raster_from_shp(
 def mask_raster(ds: rioxr, val_to_mask: list[int], mask_val=np.nan):
     """
     Mask raster where data is equal to a list of value.
-    Take care of keeping rioxarray metadata not transfer by xarray operation
+    Take care of keeping rioxarray metadata not transfered by xarray operation
 
     :param ds: rioxarray to mask
     :param val_to_mask: list of value to mask
@@ -101,7 +101,7 @@ def rd_terrain_slope_and_aspect(
     # Derive slope
     slope = rd.TerrainAttribute(rda, attrib="slope_degrees")
 
-    # Set points with no slope to no data / to get no orrientation
+    # Set points with no slope to no data / to get no orientation
     rda[slope == 0.0] = rda.no_data
 
     # Derive aspect
@@ -119,20 +119,7 @@ def mnt_interp_like(
     projection: str,
     ds_like: xr.DataArray,
     save_file=None,
-    extensions=None,
 ):
-
-    # # Deal with multiple files when extensions given
-    # mnt_files = [mnt_file]
-    # save_files = [save_file]
-    #
-    # if extensions is not None:
-    #     mnt_filename, mnt_file_extension = os.path.splitext(mnt_file)
-    #     save_filename, save_file_extension = os.path.splitext(save_file)
-    #
-    #     for ext in extensions:
-    #         mnt_files.append(mnt_filename + ext + mnt_file_extension)
-    #         save_files.append(save_filename + ext + save_file_extension)
 
     # Open mnt raster
     ds_mnt = rioxr.open_rasterio(
@@ -143,7 +130,6 @@ def mnt_interp_like(
     bounds = ds_mnt.rio.bounds()
 
     # Clip the dataset to be interpolated on to the raster limits
-    # ds_like = rioxr.open_rasterio(ds_like_file, chunks={"x": 5000, "y": 5000})
     ds_like_clip = ds_like.rio.clip_box(bounds[0], bounds[1], bounds[2], bounds[3])
 
     # Do the interpolation + rewrite nodata
