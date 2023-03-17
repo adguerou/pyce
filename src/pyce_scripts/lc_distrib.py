@@ -63,6 +63,7 @@ def plot_lc_map_and_hist(
     bbox_anchor_legend: list[float, float] = [0.5, 0.1],
     basemap=True,
     gdf_outline: pd.DataFrame = None,
+    hatch="//",
     save_file: str = None,
     return_ax: bool = False,
 ):
@@ -142,8 +143,8 @@ def plot_lc_map_and_hist(
             ax=ax[1],
             facecolor="None",
             edgecolor="k",
-            lw=1,
-            hatch="//",
+            lw=0.8,
+            hatch=hatch,
         )
 
     # Histogram
