@@ -6,3 +6,10 @@ shapely
 geopandas
 rioxarray
 xarray
+pyproj
+rasterio
+pysheds
+richdem
+contextily
+seaborn
+dask
