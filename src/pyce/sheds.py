@@ -9,27 +9,60 @@ from pysheds.view import Raster, ViewFinder
 from shapely.geometry import MultiPolygon, Polygon, shape
 
 
-def rioxr_to_raster_shed(raster: rioxr.raster_array, band=0) -> Raster:
+def array_to_raster_shed(array: np.array, raster_like: Raster) -> Raster:
 
-    array = raster.isel(band=band).to_numpy()
+    """
+    Transform a numpy array to a Raster object with the same parameters as Raster_like input
+    :param array:
+    :param raster_like:
+    :return:
+    """
 
     return Raster(
         array,
         viewfinder=ViewFinder(
             shape=array.shape,
-            affine=raster.rio.transform(),
-            crs=pyproj.Proj(raster.rio.crs.to_epsg()),
-            nodata=raster.rio.nodata,
+            affine=raster_like.affine,
+            crs=raster_like.crs,
+            nodata=raster_like.nodata,
         ),
     )
 
 
-def get_shed(
-    x: float,
-    y: float,
-    raster_shed: Raster,
-    debug: bool = False,
-):
+def rioxr_to_raster_shed(raster_rioxr: rioxr.raster_array, band=0) -> Raster:
+
+    """
+    Transform a rioxarray object to a Raster object of Pyshed moduel
+
+    :param raster_rioxr: rioxarray
+    :param band: band of the rioxarray to be transformed
+    :return: Raster of Pyshed
+    """
+
+    array = raster_rioxr.isel(band=band).to_numpy()
+
+    return Raster(
+        array,
+        viewfinder=ViewFinder(
+            shape=array.shape,
+            affine=raster_rioxr.rio.transform(),
+            crs=pyproj.Proj(raster_rioxr.rio.crs.to_epsg()),
+            nodata=raster_rioxr.rio.nodata,
+        ),
+    )
+
+
+def raster_shed_formatting(raster_shed: Raster):
+
+    """
+    Format a raster shed by filling pits, depressions and flats, return the flow direction
+
+    :param raster_shed: Raster
+    :return: dem, grid, fdir
+        dem, Digital Elevation Model with Raster format
+        grid, Grid object obtained from dem by pyshed
+        fdir, Flow direction derived by pyshed
+    """
 
     # TODO: ALLOW INPUT AS TIFF and direct exemple from pyshed documentation
 
@@ -48,23 +81,31 @@ def get_shed(
 
     # Flow and accumulation
     fdir = grid.flowdir(inflated_dem)
-    acc = grid.accumulation(fdir)
 
+    return dem, grid, fdir
+
+
+def get_catchment(
+    x: float,
+    y: float,
+    grid: Grid,
+    fdir: Grid,
+):
+
+    """
+    Return catchment using Pyshed
+
+    :param x:
+    :param y:
+    :param grid:
+    :param fdir:
+    :return: catch
+
+    """
     # Catchment
     catch = grid.catchment(x=x, y=y, fdir=fdir, xytype="coordinate")
 
-    # Debug
-    debug_dict = {
-        "pits": None,
-        "depressions": None,
-        "flats": None,
-    }
-    if debug:
-        debug_dict["pits"] = grid.detect_pits(dem)
-        debug_dict["depressions"] = grid.detect_depressions(pit_filled_dem)
-        debug_dict["flats"] = grid.detect_flats(flooded_dem)
-
-    return dem, grid, acc, catch, debug_dict
+    return catch
 
 
 def catch_to_shape(
