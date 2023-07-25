@@ -155,7 +155,8 @@ def run_confidence_massif(
     save_name=None,
 ):
 
-    list_massif, list_massif_save = get_massif_names(gdf)
+    list_massif = [str(massif) for massif in gdf["Massif"].dropna().unique()]
+    list_massif_save = [str(massif).replace(" ", "_") for massif in list_massif]
 
     for massif, massif_save in zip(list_massif, list_massif_save):
 
