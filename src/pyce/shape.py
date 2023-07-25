@@ -1,3 +1,4 @@
+import warnings
 from typing import Union
 
 import geopandas as gpd
@@ -71,6 +72,11 @@ def select_overlapping_shapes(shape1: str, shape2: str, save_name=None):
     ]
 
     if save_name is not None:
-        gdf1_overlap.to_file(save_name)
+        if gdf1_overlap.empty:
+            warnings.warn(
+                f"Overlapping dataframe is empty {shape1}. Skip to avoid writing empty file"
+            )
+        else:
+            gdf1_overlap.to_file(save_name)
 
     return gdf1_overlap
