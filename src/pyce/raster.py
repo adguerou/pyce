@@ -44,6 +44,40 @@ def crop_raster_from_shp(
     return ds
 
 
+def clip_raster_from_shp(
+    rst_file: str,
+    shp_file: str,
+    chunks: dict = None,
+    num_workers: int = 14,
+    save_file: str = None,
+    no_data: float = None,
+):
+    # Open raster + no lock to allow parallel processing
+    ds = rioxr.open_rasterio(rst_file, chunks=chunks, lock=False)
+
+    # Open shape file and convert coordinates
+    gdf = gpd.read_file(shp_file)
+    gdf.to_crs(ds.rio.crs, inplace=True)
+
+    # Clip raster to the limit of the shape file, keep shape's border touching pixels
+    ds = ds.rio.clip(gdf.geometry, all_touched=True)
+
+    # Set no data
+    if ds.rio.nodata is not None:
+        ds = ds.where(ds != ds.rio.nodata)
+        ds.rio.write_nodata(ds.rio.nodata, inplace=True, encoded=True)
+    else:
+        if no_data is not None:
+            ds.rio.write_nodata(no_data, inplace=True, encoded=True)
+
+    # Save raster using the dask xarray
+    if save_file is not None:
+        ds_rst = ds.rio.to_raster(save_file, tiled=True, lock=Lock(), compute=False)
+        ds_rst.compute(scheduler="threads", num_workers=num_workers)
+
+    return ds
+
+
 def mask_raster(ds: rioxr, val_to_mask: list[int], mask_val=np.nan):
     """
     Mask raster where data is equal to a list of value.
