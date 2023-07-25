@@ -100,6 +100,21 @@ def mask_raster(ds: rioxr, val_to_mask: list[int], mask_val=np.nan):
     return ds
 
 
+def raster_to_dataset(path, var_name, var_out_name, chunks=None):
+    """
+    Transform a raster file to an xarray dataset
+    :param path: Path of the raster file
+    :param var_name: variable to use in the raster
+    :param var_out_name: name of the variable for the dataset
+    :param chunks: as for rioxr.open_rasterio
+    :return: dataset
+    """
+    if chunks is None:
+        chunks = {"x": 5000, "y": 5000}
+    ds = rioxr.open_rasterio(path, mask_and_scale=True, chunks=chunks)
+    return ds.to_dataset(name=var_name).rename_vars({var_name: var_out_name})
+
+
 def distance_meter_from_deg(rio_ds: rioxr, crs: int = 3035) -> float:
 
     """
