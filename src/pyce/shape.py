@@ -51,17 +51,6 @@ def fusion_oso_shape(
     return gdf
 
 
-def get_massif_names(gdf):
-    list_massif = list(set(gdf.Massif))
-    list_massif.remove(None)
-
-    list_massif_save = []
-    for m in list_massif:
-        list_massif_save.append(m.replace(" ", "_").lower())
-
-    return list_massif, list_massif_save
-
-
 def remove_bad_geometry(gdf: gpd.GeoDataFrame):
     return gdf.iloc[np.where(gdf["geometry"].values != None)[0]]
 
