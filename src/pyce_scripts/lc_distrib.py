@@ -73,11 +73,12 @@ def plot_lc_map_and_hist(
     ds = rioxr.open_rasterio(raster_file, mask_and_scale=True)
     gdf.to_crs(ds.rio.crs, inplace=True)
     ds_glacier = ds.rio.clip(gdf.geometry.values, from_disk=True)
-    ds_glacier = raster.mask_raster(
-        ds_glacier,
-        val_to_mask=lc_map.codes_masked,
-        mask_val=lc_map.mask_val,
-    )
+    if lc_map.codes_masked is not None:
+        ds_glacier = raster.mask_raster(
+            ds_glacier,
+            val_to_mask=lc_map.codes_masked,
+            mask_val=lc_map.mask_val,
+        )
 
     # Projection and distance
     ds_glacier = ds_glacier.rio.reproject("EPSG:4326")
