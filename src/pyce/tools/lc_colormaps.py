@@ -64,3 +64,13 @@ colors_s2glc = [
     "#377eb8",  # eau
     "#000000",  # No data
 ]
+
+colors_h1a = [
+    "#984ea3",  # landes ligneuses
+    "#23e30e",  # pelouses
+    "#33a02c",  # foret coniferes
+    "#a65628",  # surfaces minerales
+    "#ffed6f",  # sols peu végétalisé
+    "#1694fa",  # eau
+    "#b3cde3",  # glaciers ou neige
+]
