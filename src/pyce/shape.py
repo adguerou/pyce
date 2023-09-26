@@ -56,12 +56,14 @@ def remove_bad_geometry(gdf: gpd.GeoDataFrame):
     return gdf.iloc[np.where(gdf["geometry"].values != None)[0]]
 
 
-def select_overlapping_shapes(shape1: str, shape2: str, save_name=None):
+def select_overlapping_shapes(shape1: str, shape2: str, save_name=None, **kwargs):
 
-    gdf1 = gpd.read_file(shape1)
+    gdf1 = gpd.read_file(
+        shape1,
+    )
     gdf1 = remove_bad_geometry(gdf1)
 
-    gdf2 = gpd.read_file(shape2)
+    gdf2 = gpd.read_file(shape2, **kwargs)
     gdf2 = remove_bad_geometry(gdf2)
     gdf2 = gdf2.to_crs(gdf1.crs, inplace=False)
 
