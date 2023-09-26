@@ -100,19 +100,42 @@ def mask_raster(ds: rioxr, val_to_mask: list[int], mask_val=np.nan):
     return ds
 
 
-def raster_to_dataset(path, var_name, var_out_name, chunks=None):
+def raster_to_dataset(
+    path,
+    var_name: str = None,
+    var_out_name: str = None,
+    band_name: str = "band",
+    band_out_names: dict = None,
+    chunks=None,
+):
     """
     Transform a raster file to an xarray dataset
     :param path: Path of the raster file
     :param var_name: variable to use in the raster
     :param var_out_name: name of the variable for the dataset
+    :param band_name: str used to define bands in the raster file
+    :param band_out_names: name of the band to give as for the variables definition in the datset
     :param chunks: as for rioxr.open_rasterio
     :return: dataset
     """
     if chunks is None:
         chunks = {"x": 5000, "y": 5000}
     ds = rioxr.open_rasterio(path, mask_and_scale=True, chunks=chunks)
-    return ds.to_dataset(name=var_name).rename_vars({var_name: var_out_name})
+
+    # TODO: Can be replaced by options 'band_as_variable' of open_rasterio
+    if ds.band.size > 1:
+        if band_out_names is None:
+            try:
+                band_out_names = ds.long_name
+            except ValueError:
+                print("Attributes long_name not found, provide 'band_out_names'")
+        dataset = ds.to_dataset(dim="band").rename_vars(
+            {k: v for (k, v) in zip(range(1, ds.band.size + 1), band_out_names)}
+        )
+    else:
+        dataset = ds.to_dataset(name=var_name).rename_vars({var_name: var_out_name})
+
+    return dataset
 
 
 def distance_meter_from_deg(rio_ds: rioxr, crs: int = 3035) -> float:
