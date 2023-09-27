@@ -46,6 +46,14 @@ h1a = {
     _lcm_reindex: [6, 3, 2, 0, 1, 4, 5],
 }
 
+h1a_rf = {
+    _mapping_kwargs: {"col_type": 0, "col_code": 1, "header": None, "sep": ":"},
+    _lcm_colors: lc_colormaps.colors_h1a_rf,
+    _lcm_codes_to_mask: None,
+    _lcm_mask_val: None,
+    _lcm_reindex: [4, 0, 3, 2, 1, 6, 5],
+}
+
 s2glc = {
     _mapping_kwargs: {
         "col_type": 5,
@@ -60,7 +68,13 @@ s2glc = {
     _lcm_reindex: [6, 5, 1, 0, 3, 4, 2, 7, 8],
 }
 
-dict_lc_maps = {"oso17": oso17, "oso18": oso18, "h1a": h1a, "s2glc": s2glc}
+dict_lc_maps = {
+    "oso17": oso17,
+    "oso18": oso18,
+    "h1a": h1a,
+    "h1a_rf": h1a_rf,
+    "s2glc": s2glc,
+}
 
 
 # CLASSES

@@ -74,3 +74,13 @@ colors_h1a = [
     "#1694fa",  # eau
     "#b3cde3",  # glaciers ou neige
 ]
+
+colors_h1a_rf = [
+    "#a65628",  # surfaces minerales
+    "#23e30e",  # pelouses
+    "#984ea3",  # landes ligneuses
+    "#33a02c",  # foret coniferes
+    "#b3cde3",  # glaciers ou neige
+    "#1694fa",  # eau
+    "#ffed6f",  # sols peu végétalisé
+]
