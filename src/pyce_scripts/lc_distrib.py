@@ -54,10 +54,51 @@ def get_lc_percent(
     return gdf_percent_by_group
 
 
+def get_lc_surface(
+    df,
+    pixel_size=20,
+    groupby=["Massif"],
+    lc_col_name="land_cover_h1a",
+    slope_col_name="slope",
+    convert_factor=10**6,
+):
+    # TODO: faire la doc
+    def change_lc_name_in_df(lc_name):
+        return f"LC_{int(lc_name)}"
+
+    if len(groupby) > 1:
+        raise ValueError("More than one group not supported")
+
+    # Add column surface
+    df["surface"] = raster.get_real_surface(
+        np.ones_like(df[slope_col_name]) * pixel_size, df[slope_col_name], sum=False
+    )
+
+    # Get dataframe of surface per group and land cover classes
+    df_surface = (
+        df.groupby([group for group in groupby] + [lc_col_name])["surface"].sum()
+        / convert_factor
+    ).to_frame()  # Keep dataframe
+
+    # Put 0 to >2nd index levels not existing in all 1st index level
+    ds_surface_all_index = (
+        df_surface.reindex(pd.MultiIndex.from_product([*df_surface.index.levels]))
+        .reset_index()  # To obtain a single index dataframe
+        .fillna(0)  # To replace NaN by zero
+    )
+
+    # Change name of lc_col_name to convention
+    ds_surface_all_index[lc_col_name] = ds_surface_all_index[lc_col_name].map(
+        change_lc_name_in_df
+    )
+    return ds_surface_all_index
+
+
 def plot_lc_map_and_hist(
     raster_file: str,
     gdf: gpd.GeoDataFrame,
     lc_percent: pd.DataFrame,
+    lc_surface: pd.DataFrame,
     lc_map: LandCoverMap,
     title: str = None,
     bbox_anchor_legend: list[float, float] = [0.5, 0.1],
@@ -152,14 +193,19 @@ def plot_lc_map_and_hist(
     # ==========
     codes_list = [f"LC_{code}" for code in lc_map_legend.get_code()]
     lc_percent = lc_percent.drop("Total_LC", axis=1)[codes_list]
+    lc_surface = lc_surface[codes_list]
 
     a0 = sbn.barplot(
         lc_percent, orient="h", palette=lc_map_legend.get_colors(), ax=ax[0]
     )
 
     labels = [lbl.replace(" ", "\n") for lbl in lc_map_legend.get_type()]
-    percent_str = np.array([f"{a:.3f}% " for a in lc_percent.values[0]])
+    percent_str = np.array([f"{a:.2f}% " for a in lc_percent.values[0]])
     percent_str[percent_str == "0.000% "] = ""
+    percent_str = [
+        f"{surf:.2f}" + " km2" + "\n\n (" + percent + ")"
+        for (percent, surf) in zip(percent_str, lc_surface.values[0])
+    ]
     for i in range(len(a0.containers)):
         a0.bar_label(
             a0.containers[i],
