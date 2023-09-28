@@ -1,7 +1,9 @@
 from threading import Lock
+from typing import Union
 
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 import richdem as rd
 import rioxarray as rioxr
 import xarray as xr
@@ -160,6 +162,43 @@ def distance_meter_from_deg(rio_ds: rioxr, crs: int = 3035) -> float:
     points = points.to_crs(crs)
 
     return points[0].distance(points[1])
+
+
+def get_real_surface(
+    pixel_size: Union[float, np.ndarray, pd.Series] = 10,
+    slope: Union[float, np.ndarray, pd.Series] = 0,
+    sum: bool = False,
+):
+    """
+    Get the true surface covered by a pixel or a serie of pixel taking
+    into account the slope of the terrain.
+
+    :param pixel_size: Size in meters. Pixel assumed to be square
+    :param slope: Mean slope of the pixel in degrees
+    :param sum: If True, perform the sum of all surface
+                (if pixel_size and slope are vectors of same size)
+    :return: Surface in sq meters
+    """
+
+    if not (isinstance(pixel_size, Union[float, np.ndarray, pd.Series])):
+        raise TypeError(
+            "'pixel_size' type must be within Union[float, np.array, pd.DataFrame]"
+        )
+
+    if not (isinstance(slope, Union[float, np.ndarray, pd.Series])):
+        raise TypeError(
+            "'slope' type must be within Union[float, np.array, pd.DataFrame]"
+        )
+
+    if np.size(pixel_size) != np.size(slope):
+        raise ValueError("Parameters 'pixel_size' and 'slope' must be of same length")
+
+    surface = pixel_size**2 / np.cos(slope * np.pi / 180.0)
+
+    if sum is True:
+        surface = surface.sum()
+
+    return surface
 
 
 def rd_terrain_slope_and_aspect(
