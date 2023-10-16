@@ -180,12 +180,12 @@ def get_real_surface(
     :return: Surface in sq meters
     """
 
-    if not (isinstance(pixel_size, Union[float, np.ndarray, pd.Series])):
+    if not (isinstance(pixel_size, Union[int, float, np.ndarray, pd.Series])):
         raise TypeError(
             "'pixel_size' type must be within Union[float, np.array, pd.DataFrame]"
         )
 
-    if not (isinstance(slope, Union[float, np.ndarray, pd.Series])):
+    if not (isinstance(slope, Union[int, float, np.ndarray, pd.Series])):
         raise TypeError(
             "'slope' type must be within Union[float, np.array, pd.DataFrame]"
         )
