@@ -164,8 +164,8 @@ def distance_meter_from_deg(rio_ds: rioxr, crs: int = 3035) -> float:
     return points[0].distance(points[1])
 
 
-def get_real_surface(
-    pixel_size: Union[float, np.ndarray, pd.Series] = 10,
+def get_area_slope_corrected(
+    area: Union[float, np.ndarray, pd.Series] = 10,
     slope: Union[float, np.ndarray, pd.Series] = 0,
     sum: bool = False,
 ):
@@ -173,14 +173,14 @@ def get_real_surface(
     Get the true surface covered by a pixel or a serie of pixel taking
     into account the slope of the terrain.
 
-    :param pixel_size: Size in meters. Pixel assumed to be square
+    :param area: area in [unit]
     :param slope: Mean slope of the pixel in degrees
     :param sum: If True, perform the sum of all surface
-                (if pixel_size and slope are vectors of same size)
-    :return: Surface in sq meters
+                (if area and slope are vectors of same size)
+    :return: Surface in [unit]
     """
 
-    if not (isinstance(pixel_size, Union[int, float, np.ndarray, pd.Series])):
+    if not (isinstance(area, Union[int, float, np.ndarray, pd.Series])):
         raise TypeError(
             "'pixel_size' type must be within Union[float, np.array, pd.DataFrame]"
         )
@@ -190,10 +190,10 @@ def get_real_surface(
             "'slope' type must be within Union[float, np.array, pd.DataFrame]"
         )
 
-    if np.size(pixel_size) != np.size(slope):
-        raise ValueError("Parameters 'pixel_size' and 'slope' must be of same length")
+    if np.size(area) != np.size(slope):
+        raise ValueError("Parameters 'area' and 'slope' must be of same length")
 
-    surface = pixel_size**2 / np.cos(slope * np.pi / 180.0)
+    surface = area / np.cos(slope * np.pi / 180.0)
 
     if sum is True:
         surface = surface.sum()
