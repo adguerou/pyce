@@ -14,7 +14,6 @@ def concat(list_shapes: list[str], ignore_index: bool = True):
 
     # Loop over shape files
     for shape in list_shapes:
-
         # Open shape file
         gdf = gpd.read_file(shape)
 
@@ -56,14 +55,27 @@ def remove_bad_geometry(gdf: gpd.GeoDataFrame):
     return gdf.iloc[np.where(gdf["geometry"].values != None)[0]]
 
 
-def select_overlapping_shapes(shape1: str, shape2: str, save_name=None, **kwargs):
+def select_overlapping_shapes(
+    shape1: Union[str, gpd.GeoDataFrame],
+    shape2: Union[str, gpd.GeoDataFrame],
+    save_name=None,
+    **kwargs,
+):
+    if isinstance(shape1, str):
+        gdf1 = gpd.read_file(shape1)
+    elif isinstance(shape1, gpd.GeoDataFrame):
+        gdf1 = shape1
+    else:
+        raise TypeError("shape2 : Union[str,gpd.GeoDataFrame]")
 
-    gdf1 = gpd.read_file(
-        shape1,
-    )
+    if isinstance(shape2, str):
+        gdf2 = gpd.read_file(shape2, **kwargs)
+    elif isinstance(shape2, gpd.GeoDataFrame):
+        gdf2 = shape2
+    else:
+        raise TypeError("shape2 : Union[str,gpd.GeoDataFrame]")
+
     gdf1 = remove_bad_geometry(gdf1)
-
-    gdf2 = gpd.read_file(shape2, **kwargs)
     gdf2 = remove_bad_geometry(gdf2)
     gdf2 = gdf2.to_crs(gdf1.crs, inplace=False)
 
