@@ -11,7 +11,7 @@ import xarray as xr
 
 def crop_raster_from_shp(
     rst_file: str,
-    shp_file: str,
+    shp_file: Union[str, gpd],
     chunks: dict = None,
     num_workers: int = 14,
     save_file: str = None,
@@ -21,7 +21,12 @@ def crop_raster_from_shp(
     ds = rioxr.open_rasterio(rst_file, chunks=chunks, lock=False)
 
     # Open shape file and convert coordinates
-    gdf = gpd.read_file(shp_file)
+    if isinstance(shp_file, str):
+        gdf = gpd.read_file(shp_file)
+    elif isinstance(shp_file, gpd.GeoDataFrame):
+        gdf = shp_file
+    else:
+        raise ValueError("shp_file must either a str or a GeoDataFrame")
     gdf.to_crs(ds.rio.crs, inplace=True)
 
     # Crop raster to the limit of the shape file
@@ -39,9 +44,11 @@ def crop_raster_from_shp(
             ds.rio.write_nodata(no_data, inplace=True, encoded=True)
 
     # Save raster using the dask xarray
-    if save_file is not None:
+    if save_file is not None and chunks is not None:
         ds_rst = ds.rio.to_raster(save_file, tiled=True, lock=Lock(), compute=False)
         ds_rst.compute(scheduler="threads", num_workers=num_workers)
+    else:
+        ds_rst = ds.rio.to_raster(save_file)
 
     return ds
 
@@ -141,7 +148,6 @@ def raster_to_dataset(
 
 
 def distance_meter_from_deg(rio_ds: rioxr, crs: int = 3035) -> float:
-
     """
     Get unit distance (one degree) in meters at the mean latitude of a raster.
     The conversion is done in a new CRS that, by default, correspond to European zone
@@ -204,7 +210,6 @@ def get_area_slope_corrected(
 def rd_terrain_slope_and_aspect(
     mnt_file: str, projection: str, save_file_slope=None, save_file_aspect=None
 ):
-
     # Open file and add projection
     rda = rd.LoadGDAL(mnt_file)
     rda.projection = projection
@@ -231,7 +236,6 @@ def mnt_interp_like(
     ds_like: xr.DataArray,
     save_file=None,
 ):
-
     # Open mnt raster
     ds_mnt = rioxr.open_rasterio(
         mnt_file, chunks={"x": 100, "y": 100}, mask_and_scale=True
