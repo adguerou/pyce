@@ -179,7 +179,7 @@ def get_area_slope_corrected(
     Get the true surface covered by a pixel or a serie of pixel taking
     into account the slope of the terrain.
 
-    :param area: area in [unit]
+    :param area: area of pixel(s) in [unit]
     :param slope: Mean slope of the pixel in degrees
     :param sum: If True, perform the sum of all surface
                 (if area and slope are vectors of same size)
@@ -188,7 +188,7 @@ def get_area_slope_corrected(
 
     if not (isinstance(area, Union[int, float, np.ndarray, pd.Series])):
         raise TypeError(
-            "'pixel_size' type must be within Union[float, np.array, pd.DataFrame]"
+            "'area' type must be within Union[float, np.array, pd.DataFrame]"
         )
 
     if not (isinstance(slope, Union[int, float, np.ndarray, pd.Series])):
@@ -202,7 +202,7 @@ def get_area_slope_corrected(
     surface = area / np.cos(slope * np.pi / 180.0)
 
     if sum is True:
-        surface = surface.sum()
+        surface = np.nansum(surface)
 
     return surface
 
