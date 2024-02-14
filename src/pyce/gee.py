@@ -110,6 +110,6 @@ def ee_to_gdf_by_slice(
     gdf.reset_index(inplace=True)
 
     if crs is not None:
-        gdf.set_crs(crs)
+        gdf.set_crs(crs, inplace=True)
 
     return gdf
