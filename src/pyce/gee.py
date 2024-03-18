@@ -1,7 +1,12 @@
+import types
+
 import dask
 import ee
 import geemap
+import numpy as np
 import pandas as pd
+import seaborn as sbn
+from matplotlib import pyplot as plt
 
 
 # =====================================================================================
@@ -221,3 +226,200 @@ def ic_monthly_median(
         return monthly_median_coll.toBands().rename(new_band_names)
     else:
         return monthly_median_coll
+
+
+# =====================================================================================
+# RANDOM FOREST CLASSIFICATION
+# =====================================================================================
+def rf_circular(
+    rf_gee: ee.Classifier.smileRandomForest,
+    ds_training: ee.FeatureCollection,
+    ds_indices: ee.Image,
+    indices_names: list[str],
+    n_areas: int = 4,
+    areas_name: str = "rf_area_id",
+    label_classif_col: str = "landcover",
+    labels_lc: list[str] = None,
+):
+    # Final output list
+    rf_proba = []  # Classif proba
+    error_matrix = []  # Accuracy of validation sample for each RF
+
+    # Indices list of the circular areas
+    list_rf_id = list(range(1, n_areas + 1))
+
+    # Classification for each circular areas
+    # --------------------------------------
+    for rf_id in list_rf_id:
+        # Get training and validation sample
+        rf_training_id = [x for x in list_rf_id if x != rf_id]
+        rf_validation_id = [rf_id]
+
+        sample_training = ds_training.filter(
+            ee.Filter.inList(areas_name, rf_training_id)
+        )
+        sample_validation = ds_training.filter(
+            ee.Filter.inList(areas_name, rf_validation_id)
+        )
+
+        # Train the model
+        classifier = rf_gee.train(sample_training, label_classif_col, indices_names)
+
+        # Get the classification
+        classified_image_proba = ds_indices.classify(
+            classifier.setOutputMode("MULTIPROBABILITY")
+        ).arrayFlatten([labels_lc])
+        rf_proba.append(classified_image_proba)
+
+        # Get the accuracy on the validation sample
+        classified_validation = sample_validation.classify(classifier)
+        error_matrix.append(
+            classified_validation.errorMatrix(label_classif_col, "classification")
+        )
+
+    # Get the mean proba for each landcover class from the circular RF
+    rf_mean = ee.ImageCollection.fromImages(rf_proba).mean()
+    rf_std = ee.ImageCollection.fromImages(rf_proba).reduce(ee.Reducer.stdDev())
+
+    return rf_mean, rf_std, error_matrix
+
+
+def classify(
+    rf_mean: ee.Image,
+    lc_labels: list[str],
+    lc_values: list[str],
+    name: str = "classification",
+    extra_class: list[tuple] = None,
+    extra_class_value: int = None,
+):
+    def add_condition(cond1, cond2):
+        return cond1 & cond2
+
+    # Basic checks for inputs
+    # =======================
+    if len(lc_labels) != len(lc_values):
+        raise IOError(
+            f"Lenght of 'lc_labels' and 'lc_values' must be equal,"
+            f" got {len(lc_labels)} and {len(lc_values)}"
+        )
+
+    # Extra class
+    if extra_class is not None:
+        if not isinstance(extra_class, list):
+            raise TypeError(
+                f"'extra_class' argument must be a list, got {type(extra_class)}"
+            )
+        for extra_class_item in extra_class:
+            if not isinstance(extra_class_item, tuple):
+                raise TypeError(
+                    f"'extra_class' items must be tuples, got {type(extra_class_item)}"
+                )
+            if len(extra_class_item) != 3:
+                raise IOError(
+                    f"'extra_class' items must be of length 3, "
+                    f"got {len(extra_class_item)}"
+                )
+            if not isinstance(extra_class_item[0], str):
+                raise TypeError(
+                    f"'extra_class' tuples 1st argument be a str, "
+                    f"got {type(extra_class_item[0])}"
+                )
+            if not isinstance(extra_class_item[1], types.BuiltinFunctionType):
+                raise TypeError(
+                    f"'extra_class' tuples 2nd argument be a built-in operator, "
+                    f"got {type(extra_class_item[1])}"
+                )
+            if not isinstance(extra_class_item[2], float):
+                raise TypeError(
+                    f"'extra_class' tuples 3rd argument be a float,"
+                    f" got {type(extra_class_item[2])}"
+                )
+
+        if extra_class_value is None:
+            raise IOError("extra_class_value must be filled, got None")
+
+    # Classification by landcover type / create ee.Image
+    # ---------------------------------------------------
+    classif = None
+
+    for label, value in zip(lc_labels, lc_values):
+        other_labels = [lbl for lbl in lc_labels if lbl != label]
+        cond = rf_mean.select(label) > rf_mean.select(other_labels[0])
+        for other_label in other_labels[1:]:
+            cond = add_condition(
+                cond, rf_mean.select(label) > rf_mean.select(other_label)
+            )
+        try:
+            if isinstance(classif, ee.Image):
+                classif = classif.where(cond, int(value))
+            else:
+                classif = ee.Image.constant(-1).rename(name).where(cond, int(value))
+        except:
+            raise AssertionError(
+                f"Image classification couldn't be initialize and/or modified"
+            )
+
+    # Add a class on top of other classification
+    # ------------------------------------------
+    if extra_class is not None:
+        cond = extra_class[0][1](rf_mean.select(extra_class[0][0]), extra_class[0][2])
+
+        for condition in extra_class[1:]:
+            cond = add_condition(
+                cond, condition[1](rf_mean.select(condition[0]), condition[2])
+            )
+
+        classif = classif.where(cond, int(extra_class_value))
+
+    return classif
+
+
+def plot_errorMatrix(errorMatrix, lcmap, label=None):
+    mat = errorMatrix.getInfo()
+    mat_percent = np.divide(mat, np.sum(mat, axis=1)) * 100
+
+    accuracy = errorMatrix.accuracy().getInfo()
+    kappa = errorMatrix.kappa().getInfo()
+    fscore = errorMatrix.fscore()
+
+    f, (ax1, ax2) = plt.subplots(
+        1, 2, sharey=True, gridspec_kw={"width_ratios": [0.08, 1]}
+    )
+
+    g1 = sbn.heatmap(
+        mat_percent,
+        annot=mat,
+        vmin=0,
+        vmax=100,
+        cmap="crest_r",
+        linewidth=0.5,
+        fmt=".0f",
+        ax=ax2,
+    )
+    f.subplots_adjust(wspace=0.5)
+
+    ax1.axis("off")
+    ax1.set_xlim([0, 1])
+    fscore_str = [f"{fs:.3f}" for fs in fscore.getInfo()]
+
+    for i in range(len(fscore_str)):
+        ax1.text(0.1, i + 0.6, f"F-score:\n {fscore_str[i]}")
+
+    labels = [lbl.replace(" ", "\n") for lbl in lcmap.get_type()]
+
+    ax2.set(xticklabels=labels, yticklabels=labels)
+    ax2.set_xticklabels(g1.get_xmajorticklabels(), fontsize=9)
+    ax2.set_xlabel(g1.get_xlabel(), fontsize=12, fontweight="bold")
+    ax2.set_ylabel(g1.get_ylabel(), fontsize=12, fontweight="bold")
+    ax2.yaxis.set_tick_params(labelleft=True)
+
+    f.suptitle(f"{label} - accuracy: {accuracy:.2f} - kappa: {kappa:.2f}")
+
+    cbar = g1.collections[0].colorbar
+    cbar.set_ticks([0, 50, 100])
+    cbar.set_label(f"[%] of correct prediction")
+
+    ax2.tick_params(axis="x", rotation=40)
+    ax2.tick_params(axis="y", rotation=20)
+
+    f.tight_layout()
