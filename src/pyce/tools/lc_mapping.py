@@ -54,6 +54,14 @@ h1a_rf = {
     _lcm_reindex: [4, 0, 3, 2, 1, 6, 5],
 }
 
+h1b = {
+    _mapping_kwargs: {"col_type": 0, "col_code": 1, "header": None, "sep": ":"},
+    _lcm_colors: lc_colormaps.colors_h1b,
+    _lcm_codes_to_mask: None,
+    _lcm_mask_val: None,
+    _lcm_reindex: [4, 0, 3, 2, 1, 6, 5],
+}
+
 s2glc = {
     _mapping_kwargs: {
         "col_type": 5,
@@ -68,12 +76,15 @@ s2glc = {
     _lcm_reindex: [6, 5, 1, 0, 3, 4, 2, 7, 8],
 }
 
+# Dictionnary that compile all mappings
+# --------------------------------------
 dict_lc_maps = {
     "oso17": oso17,
     "oso18": oso18,
     "h1a": h1a,
     "h1a_rf": h1a_rf,
     "s2glc": s2glc,
+    "h1b": h1b,
 }
 
 
@@ -87,7 +98,6 @@ class LandCoverMap:
     def __init__(
         self, df: Union[pd.DataFrame, str] = None, colors: list = None, name: str = None
     ):
-
         # Give a name
         self.name = name
         self.codes_masked = None
@@ -114,7 +124,6 @@ class LandCoverMap:
         self._set_param_from_name()
 
     def _set_colors(self, colors: list = None):
-
         if colors is not None:
             if self.df.shape[0] != len(colors):
                 raise ValueError(
@@ -127,7 +136,6 @@ class LandCoverMap:
             self.df[f"{_color_name}"] = np.nan
 
     def _set_param_from_name(self):
-
         if self.name in dict_lc_maps:
             param = dict_lc_maps[self.name]
             self._set_colors(param[_lcm_colors])
@@ -364,7 +372,6 @@ class LandCoverMap:
             return lc_map
 
     def swap_rows_from_col_val(self, col_name, val1, val2, in_place=False):
-
         """
         Swap two rows of the lcmap dataframe based on their values of a given column
 
@@ -455,7 +462,6 @@ def get_lc_mapping(
 def oso_mapping_fusion_in_df(
     df: pd.DataFrame, lc_map_to: LandCoverMap, lc_map_from: LandCoverMap
 ):
-
     lc_map_to.reindex(in_place=True)
     lc_map_from.reindex(in_place=True)
 
