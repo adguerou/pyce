@@ -5,6 +5,7 @@ import geopandas as gpd
 import matplotlib.patches as mpatches
 import numpy as np
 import pandas as pd
+import rasterio.features
 import rioxarray as rioxr
 import seaborn as sbn
 from matplotlib import pyplot as plt
@@ -12,13 +13,14 @@ from matplotlib_scalebar.scalebar import ScaleBar
 from pyce import raster
 from pyce.tools.lc_mapping import LandCoverMap
 
+rasterio.features.geometry_mask()
+
 
 def get_lc_percent(
     shp_file: Union[str, gpd.GeoDataFrame],
     groupby: list[str],
     lc_col_name: str = "LC",
 ):
-
     # Open shp file + remove corrupted item with no geometry
     if isinstance(shp_file, str):
         gdf = gpd.read_file(shp_file)
@@ -120,7 +122,6 @@ def plot_lc_map_and_hist(
     save_file: str = None,
     return_ax: bool = False,
 ):
-
     # Open raster + masking to land cover map
     # =======================================
     ds = rioxr.open_rasterio(raster_file, mask_and_scale=True)
