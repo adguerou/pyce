@@ -1,3 +1,4 @@
+import os.path
 import types
 
 import dask
@@ -374,7 +375,7 @@ def classify(
     return classif
 
 
-def plot_errorMatrix(errorMatrix, lcmap, label=None):
+def plot_errorMatrix(errorMatrix, lcmap, label=None, save_dir=None, save_name=None):
     mat = errorMatrix.getInfo()
     mat_percent = np.divide(mat, np.sum(mat, axis=1)) * 100
 
@@ -423,3 +424,17 @@ def plot_errorMatrix(errorMatrix, lcmap, label=None):
     ax2.tick_params(axis="y", rotation=20)
 
     f.tight_layout()
+
+    if save_dir is not None and save_name is not None:
+        plt.savefig(os.path.join(save_dir, save_name), dpi=200)
+
+
+# =====================================================================================
+# Digital Elevation Model
+# =====================================================================================
+def get_slope(image: ee.Image):
+    return ee.Terrain.slope(image)
+
+
+def get_aspect(image: ee.Image):
+    return ee.Terrain.aspect(image)
