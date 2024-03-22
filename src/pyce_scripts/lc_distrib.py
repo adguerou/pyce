@@ -5,15 +5,12 @@ import geopandas as gpd
 import matplotlib.patches as mpatches
 import numpy as np
 import pandas as pd
-import rasterio.features
 import rioxarray as rioxr
 import seaborn as sbn
 from matplotlib import pyplot as plt
 from matplotlib_scalebar.scalebar import ScaleBar
 from pyce import raster
 from pyce.tools.lc_mapping import LandCoverMap
-
-rasterio.features.geometry_mask()
 
 
 def get_lc_percent(
@@ -106,6 +103,27 @@ def get_lc_surface(
     ds_surface_all_index[f"Total_LC"] = ds_surface_all_index.sum(axis=1)
 
     return ds_surface_all_index
+
+
+def rename_lc_df(
+    df: pd.DataFrame,
+    lcmap: LandCoverMap,
+    inplace: bool = False,
+    lc_col_prefix: str = "LC",
+):
+    # Create a dictionary of correspondence LC_XXX to type in LCMAP
+    dict_rename = {}
+    df_lc_col_names = [
+        col_name for col_name in df.columns if col_name.startswith(lc_col_prefix)
+    ]
+    for col in df_lc_col_names:
+        dict_rename[col] = lcmap.get_type_of_code(int(col[-1]))
+    # rename colums
+
+    if inplace:
+        df.rename(columns=dict_rename, inplace=inplace)
+    else:
+        return df.rename(columns=dict_rename, inplace=inplace)
 
 
 def plot_lc_map_and_hist(
