@@ -59,7 +59,7 @@ h1b = {
     _lcm_colors: lc_colormaps.colors_h1b,
     _lcm_codes_to_mask: None,
     _lcm_mask_val: None,
-    _lcm_reindex: [4, 0, 3, 2, 1, 6, 5],
+    _lcm_reindex: [3, 2, 1, 6, 0, 4, 5],
 }
 
 s2glc = {
@@ -199,6 +199,26 @@ class LandCoverMap:
         """
         bins = self.get_bins()
         return BoundaryNorm(bins, np.size(bins) - 1)
+
+    def get_type_of_code(self, code: int = None) -> str:
+        """
+        Return the column 'Type' having the code given in parameter
+        :return: str
+        """
+        if code is None:
+            raise IOError("parameter 'code' missing")
+
+        return self.df.loc[self.df[f"{_code_name}"] == code][f"{_type_name}"].iloc[0]
+
+    def get_code_of_type(self, type: str = None) -> int:
+        """
+        Return the column 'Type' having the code given in parameter
+        :return: int
+        """
+        if type is None:
+            raise IOError("parameter 'type' missing")
+
+        return self.df.loc[self.df[f"{_type_name}"] == type][f"{_code_name}"].iloc[0]
 
     def group_to(
         self,
