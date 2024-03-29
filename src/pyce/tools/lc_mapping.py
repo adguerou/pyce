@@ -173,6 +173,20 @@ class LandCoverMap:
         """
         return self.df[f"{_color_name}"].to_numpy()
 
+    def get_color_of_code(self, code=None) -> str:
+        """
+        Return the 'Color' value corresponding to 'Code'
+        :return: str
+        """
+        return self.df.loc[self.df[f"{_code_name}"] == code][f"{_color_name}"].iloc[0]
+
+    def get_color_of_type(self, typ=None) -> str:
+        """
+        Return the 'Color' value corresponding to 'Code'
+        :return: np.array
+        """
+        return self.df.loc[self.df[f"{_type_name}"] == typ][f"{_color_name}"].iloc[0]
+
     def get_cmap(self, cmap_name: str) -> ListedColormap:
         """
         Create a colormap based on the 'Color' column
