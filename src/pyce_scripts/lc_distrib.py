@@ -60,7 +60,7 @@ def get_lc_surface(
     slope_col_name="slope",
     area_col_name="area",
     area_corrected_col_name="_slope_corrected",
-    convert_factor=10**6,
+    convert_factor=1e6,
 ):
     # TODO: faire la doc
     def change_lc_name_in_df(lc_name):
@@ -70,9 +70,14 @@ def get_lc_surface(
         raise ValueError("More than one group not supported")
 
     # Add column surface
-    df[f"{area_col_name}{area_corrected_col_name}"] = raster.get_area_slope_corrected(
-        df[area_col_name], df[slope_col_name], sum=False
-    )
+    if f"{area_col_name}{area_corrected_col_name}" in list(df.columns):
+        pass
+    else:
+        df[
+            f"{area_col_name}{area_corrected_col_name}"
+        ] = raster.get_area_slope_corrected(
+            df[area_col_name], df[slope_col_name], sum=False
+        )
 
     # Get dataframe of surface per group and land cover classes
     df_surface = (
