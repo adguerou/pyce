@@ -54,20 +54,22 @@ def get_lc_percent(
 
 
 def get_lc_surface(
-    df,
-    groupby=["Massif"],
-    lc_col_name="land_cover_h1a",
-    slope_col_name="slope",
-    area_col_name="area",
-    area_corrected_col_name="_slope_corrected",
-    convert_factor=1e6,
+    df: Union[pd.DataFrame, gpd.GeoDataFrame],
+    groupby: [str] = ["Country", "glacier", "veget", "landcover"],
+    add_total: bool = True,
+    slope_correction: bool = True,
+    slope_col_name: str = "slope",
+    area_col_name: str = "area",
+    area_corrected_col_name: str = "_slope_corrected",
+    convert_factor: int = 1e6,
 ):
     # TODO: faire la doc
     def change_lc_name_in_df(lc_name):
         return f"LC_{int(lc_name)}"
 
-    if len(groupby) > 1:
-        raise ValueError("More than one group not supported")
+    # Set name of the column to sue for the area
+    if slope_correction is False:
+        area_corrected_col_name = ""
 
     # Add column surface
     if f"{area_col_name}{area_corrected_col_name}" in list(df.columns):
@@ -79,18 +81,18 @@ def get_lc_surface(
             df[area_col_name], df[slope_col_name], sum=False
         )
 
-    # Get dataframe of surface per group and land cover classes
+    # Get dataframe of surface per group
     df_surface = (
-        df.groupby([group for group in groupby] + [lc_col_name])[
+        df.groupby(groupby, observed=False)[
             f"{area_col_name}{area_corrected_col_name}"
         ].sum()
         / convert_factor
     ).reset_index()  # transform multi index to columns
 
-    # Reshape group as row and landcover surface as columns
-    ds_surface_all_index = df_surface.pivot(
-        index=groupby,
-        columns=lc_col_name,
+    # Reshape groups as row and landcover surface as columns
+    ds_surface_all_index = df_surface.pivot_table(
+        index=groupby[:-1],
+        columns=groupby[-1],
         values=f"{area_col_name}{area_corrected_col_name}",
     ).fillna(
         0
@@ -105,7 +107,8 @@ def get_lc_surface(
     )
 
     # Add total surface column
-    ds_surface_all_index[f"Total_LC"] = ds_surface_all_index.sum(axis=1)
+    if add_total is True:
+        ds_surface_all_index[f"Total_LC"] = ds_surface_all_index.sum(axis=1)
 
     return ds_surface_all_index
 
