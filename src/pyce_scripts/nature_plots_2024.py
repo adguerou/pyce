@@ -1,5 +1,6 @@
 import os
 
+import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 from pyce.tools.lc_mapping import LandCoverMap
@@ -141,7 +142,8 @@ def get_stats_table(
 
 
 def plot_donuts(
-    df: pd.DataFrame,
+    df_donuts: pd.DataFrame,
+    df_bars: pd.DataFrame,
     lcmap: LandCoverMap,
     col_veget="vegetation_and_water",
     col_rocks="rocks",
@@ -151,43 +153,47 @@ def plot_donuts(
 ):
     # Reshape df so each country is a dataframe line
     # ==============================================
-    df_stats = df.unstack(level=1).fillna(0)["Surface"]
-
-    # ==============
-    # DONUTS
-    # ==============
+    df_donuts = df_donuts.unstack(level=1).fillna(0)["Surface"]
+    df_bars = df_bars.unstack(level=1).fillna(0)["Surface"]
 
     # general parameters
-    wedge_size = 0.5
+    # ==================
+    global_size = 0.7
+    wedge_size = 0.2
     inner_ratio_factor = 1.2
 
+    # ======
     # Plots
-    for area in range(df_stats.shape[0]):
+    # =====
+    for area in range(df_donuts.shape[0]):
+        # ==============
+        # DONUTS
+        # ==============
         fig, ax = plt.subplots(figsize=(5, 5))
 
         # ========
         # Get Data
         # ========
-        df_area = df_stats.iloc[area]
+        df_donuts_area = df_donuts.iloc[area]
 
         # =====
         # INNER
         # =====
-        inner_vals = [df_area[col_g1850]] * 2
+        inner_vals = [df_donuts_area[col_g1850]] * 2
         inner_colors = ["#74a9cf"] * 2
 
         # Define radius of inner pie
         # --------------------------
         inner_ratio = (
-            df_area[col_g1850]
-            / df_stats.loc[df_stats.index == "Alps", col_g1850].iloc[0]
+            df_donuts_area[col_g1850]
+            / df_donuts.loc[df_donuts.index == "Alps", col_g1850].iloc[0]
         )
         if inner_ratio != 1:
             inner_ratio *= inner_ratio_factor
 
-        inner_radius = (1 - wedge_size * 1.1) * inner_ratio
+        inner_radius = (global_size - wedge_size * 1.2) * inner_ratio
         if inner_radius < 0.05:
-            inner_radius = 0.05
+            inner_radius = 0.02
 
         # add external black line
         # -----------------------
@@ -208,14 +214,14 @@ def plot_donuts(
 
         # Put labels to inner pie
         # -----------------------
-        if df_area.name != "Alps":
+        if df_donuts_area.name != "Alps":
             inner_label_pos = inner_radius + 0.1
         else:
             inner_label_pos = 0.1
 
         labels[0].update(
             dict(
-                text=f"{df_area.name}",
+                text=f"{df_donuts_area.name}",
                 color="k",
                 weight="bold",
                 fontsize=20,
@@ -241,9 +247,9 @@ def plot_donuts(
         # OUTER
         # =====
         outer_vals = [
-            df_area[col_snow_and_ice],
-            df_area[col_rocks],
-            df_area[col_veget],
+            df_donuts_area[col_snow_and_ice],
+            df_donuts_area[col_rocks],
+            df_donuts_area[col_veget],
         ]
 
         outer_colors = [
@@ -252,25 +258,34 @@ def plot_donuts(
             lcmap.get_color_of_code(code=3),
         ]
 
-        # Redefine outer_vals for small values
-        # ------------------------------------
+        # Redefine outer_vals for small values of snow and ice
+        # ----------------------------------------------------
         shift_snow_and_ice = 0.0
-        if outer_vals[0] / df_area[col_g1850] * 100 < 1:  # Below 1% of total
-            shift_snow_and_ice = df_area[col_g1850] / 100  # 1% of total in surface
+        if outer_vals[0] / df_donuts_area[col_g1850] * 100 < 1:  # Below 1% of total
+            shift_snow_and_ice = (
+                df_donuts_area[col_g1850] / 100
+            )  # 1% of total in surface
             outer_vals[0] += shift_snow_and_ice  # add 1% to snow and ice
             outer_vals[1] -= shift_snow_and_ice  # remove 1% to rocks
+
+        # Shift start angle for no vegetation
+        # -----------------------------------
+        if outer_vals[2] == 0.0:
+            startangle = -45
+        else:
+            startangle = 0
 
         # Plot pie
         # --------
         wedges, labels, autotexts = ax.pie(
             outer_vals,
-            radius=1,
+            radius=global_size,
             colors=outer_colors,
             autopct="%1.1f%%",
-            pctdistance=0.75,
+            pctdistance=1.2,
             wedgeprops=dict(width=wedge_size, edgecolor="k", linewidth=0.5),
             counterclock=False,
-            startangle=0,
+            startangle=startangle,
         )
 
         # Update percentage
@@ -280,7 +295,7 @@ def plot_donuts(
             if float(at.get_text()[:-1]) != 0.0:
                 at.update(
                     {
-                        "fontsize": 18,
+                        "fontsize": 16,
                         "fontstyle": "italic",
                         "horizontalalignment": "center",
                         "verticalalignment": "center_baseline",
@@ -289,15 +304,79 @@ def plot_donuts(
             else:
                 at.update({"text": ""})
 
+        # Move percentage of vegetation
+        autotexts[2].update(
+            dict(
+                x=autotexts[2].get_position()[0] + 0.1,
+                y=autotexts[2].get_position()[1] - 0.05,
+            )
+        )
+
         # Put correct values for snow and ice
+        # -----------------------------------
         if shift_snow_and_ice != 0:
             for at, sign in zip([autotexts[0], autotexts[1]], [-1, 1]):
                 orig_surf = (
-                    float(at.get_text()[:-1]) * df_area[col_g1850] / 100
+                    float(at.get_text()[:-1]) * df_donuts_area[col_g1850] / 100
                     + sign * shift_snow_and_ice
                 )
-                orig_percent = orig_surf / df_area[col_g1850] * 100
+                orig_percent = orig_surf / df_donuts_area[col_g1850] * 100
                 at.set_text(f"{orig_percent:.1f}%")
+
+        # =============
+        # BAR PLOT
+        # =============
+        if df_donuts_area.name in df_bars.index:
+            # Get data
+            # --------
+            df_bars_area = df_bars.loc[df_bars.index == df_donuts_area.name].iloc[0]
+            df_bars_area = df_bars_area[
+                [
+                    "LC_6",
+                    "LC_1",
+                    "LC_2",
+                    "LC_3",
+                    "LC_5",
+                ]
+            ]
+
+            # Define subplots
+            # ---------------
+            ax_bar = ax.inset_axes([0.0, 0.0, 1, 1], polar=True, zorder=10)
+            ax_bar.set_ylim(-global_size - 0.5, 1)
+            ax_bar.set_frame_on(False)
+            ax_bar.xaxis.grid(False)
+            ax_bar.yaxis.grid(False)
+            ax_bar.set_xticks([])
+            ax_bar.set_yticks([])
+
+            # Set the coordinates limits
+            x_lower_limit = 0 + wedge_size
+            angle_offset = (
+                (df_donuts_area[col_veget] / np.sum(outer_vals) * 100) / 50 * np.pi
+            )
+
+            df_bars_max = (df_bars.loc[df_bars.index == "CH"].iloc[0]).max()
+            indexes = list(range(0, len(df_bars_area.index)))
+
+            width = np.pi / 2.8 / len(df_bars_area.index)
+            angles = [
+                angle_offset + element * (width + np.pi / 180) for element in indexes
+            ]
+            heights = df_bars_area.values / df_bars_max
+            colors = [
+                lcmap.get_color_of_code(int(code[-1])) for code in df_bars_area.index
+            ]
+
+            # Draw bars
+            bars = ax_bar.bar(
+                x=angles,
+                height=heights,
+                width=width,
+                bottom=x_lower_limit,
+                align="edge",
+                color=colors,
+            )
 
         # Layout
         # ======
@@ -306,7 +385,7 @@ def plot_donuts(
 
         if save_dir is not None:
             plt.savefig(
-                os.path.join(save_dir, f"donuts_{df_area.name}_v4.png"),
+                os.path.join(save_dir, f"donuts_{df_donuts_area.name}_v4.png"),
                 dpi=200,
-                transparent=True,
+                transparent=False,
             )
