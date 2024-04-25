@@ -1,5 +1,6 @@
+import os
+
 import pandas as pd
-import seaborn as sbn
 from matplotlib import pyplot as plt
 from pyce.tools.lc_mapping import LandCoverMap
 
@@ -146,6 +147,7 @@ def plot_donuts(
     col_rocks="rocks",
     col_snow_and_ice="snow_and_ice",
     col_g1850="Total",
+    save_dir=None,
 ):
     # Reshape df so each country is a dataframe line
     # ==============================================
@@ -156,7 +158,8 @@ def plot_donuts(
     # ==============
 
     # general parameters
-    size = 0.4
+    wedge_size = 0.5
+    inner_ratio_factor = 1.2
 
     # Plots
     for area in range(df_stats.shape[0]):
@@ -167,63 +170,143 @@ def plot_donuts(
         # ========
         df_area = df_stats.iloc[area]
 
-        inner_vals = [df_area[col_g1850]]
-        inner_colors = [lcmap.get_color_of_code(code=4)]
-
-        outer_vals = [
-            df_area[col_snow_and_ice],
-            df_area[col_rocks],
-            df_area[col_veget],
-        ]
-        outer_colors = [
-            lcmap.get_color_of_code(code=4),
-            lcmap.get_color_of_code(code=0),
-            lcmap.get_color_of_code(code=3),
-        ]
-
         # =====
         # INNER
         # =====
-        wedges, labels, autotexts = ax.pie(
+        inner_vals = [df_area[col_g1850]] * 2
+        inner_colors = ["#74a9cf"] * 2
+
+        # Define radius of inner pie
+        # --------------------------
+        inner_ratio = (
+            df_area[col_g1850]
+            / df_stats.loc[df_stats.index == "Alps", col_g1850].iloc[0]
+        )
+        if inner_ratio != 1:
+            inner_ratio *= inner_ratio_factor
+
+        inner_radius = (1 - wedge_size * 1.1) * inner_ratio
+        if inner_radius < 0.05:
+            inner_radius = 0.05
+
+        # add external black line
+        # -----------------------
+        circle = plt.Circle((0, 0), inner_radius, color="k", linewidth=5)
+        ax.add_patch(circle)
+
+        # Plot the pie
+        # ------------
+        wedges, labels = ax.pie(
             inner_vals,
-            radius=1 - size - ,
+            radius=inner_radius,
             colors=inner_colors,
-            autopct="%1.1f%%",
             pctdistance=0.0,
-            wedgeprops=dict(width=0.1, edgecolor="w"),
+            wedgeprops=dict(width=inner_radius),
             counterclock=False,
             startangle=0,
         )
 
-        autotexts[0].update(
+        # Put labels to inner pie
+        # -----------------------
+        if df_area.name != "Alps":
+            inner_label_pos = inner_radius + 0.1
+        else:
+            inner_label_pos = 0.1
+
+        labels[0].update(
             dict(
                 text=f"{df_area.name}",
-                color="w",
+                color="k",
                 weight="bold",
                 fontsize=20,
                 fontstyle="normal",
-                x=autotexts[0].get_position()[0] + 0.1,
-                y=autotexts[0].get_position()[1] - 0.0,
+                horizontalalignment="center",
+                x=0,
+                y=inner_label_pos,
+            )
+        )
+        labels[1].update(
+            dict(
+                text=f"{inner_vals[0]:.0f} km²",
+                color="k",
+                fontsize=18,
+                fontstyle="italic",
+                horizontalalignment="center",
+                x=0,
+                y=-inner_label_pos,
             )
         )
 
         # =====
         # OUTER
         # =====
+        outer_vals = [
+            df_area[col_snow_and_ice],
+            df_area[col_rocks],
+            df_area[col_veget],
+        ]
+
+        outer_colors = [
+            lcmap.get_color_of_code(code=4),
+            lcmap.get_color_of_code(code=0),
+            lcmap.get_color_of_code(code=3),
+        ]
+
+        # Redefine outer_vals for small values
+        # ------------------------------------
+        shift_snow_and_ice = 0.0
+        if outer_vals[0] / df_area[col_g1850] * 100 < 1:  # Below 1% of total
+            shift_snow_and_ice = df_area[col_g1850] / 100  # 1% of total in surface
+            outer_vals[0] += shift_snow_and_ice  # add 1% to snow and ice
+            outer_vals[1] -= shift_snow_and_ice  # remove 1% to rocks
+
+        # Plot pie
+        # --------
         wedges, labels, autotexts = ax.pie(
             outer_vals,
             radius=1,
             colors=outer_colors,
             autopct="%1.1f%%",
-            labeldistance=0.45,
-            pctdistance=0.8,
-            wedgeprops=dict(width=size, edgecolor="#ffffff00"),
+            pctdistance=0.75,
+            wedgeprops=dict(width=wedge_size, edgecolor="k", linewidth=0.5),
             counterclock=False,
             startangle=0,
         )
 
+        # Update percentage
+        # -----------------
+        # Remove 0% labels
         for at in autotexts:
-            at.update({"fontsize": 15, "fontstyle": "italic"})
+            if float(at.get_text()[:-1]) != 0.0:
+                at.update(
+                    {
+                        "fontsize": 18,
+                        "fontstyle": "italic",
+                        "horizontalalignment": "center",
+                        "verticalalignment": "center_baseline",
+                    }
+                )
+            else:
+                at.update({"text": ""})
 
+        # Put correct values for snow and ice
+        if shift_snow_and_ice != 0:
+            for at, sign in zip([autotexts[0], autotexts[1]], [-1, 1]):
+                orig_surf = (
+                    float(at.get_text()[:-1]) * df_area[col_g1850] / 100
+                    + sign * shift_snow_and_ice
+                )
+                orig_percent = orig_surf / df_area[col_g1850] * 100
+                at.set_text(f"{orig_percent:.1f}%")
+
+        # Layout
+        # ======
         plt.tight_layout()
         plt.show()
+
+        if save_dir is not None:
+            plt.savefig(
+                os.path.join(save_dir, f"donuts_{df_area.name}_v4.png"),
+                dpi=200,
+                transparent=True,
+            )
