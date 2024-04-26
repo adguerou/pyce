@@ -94,3 +94,34 @@ def select_overlapping_shapes(
             gdf1_overlap.to_file(save_name)
 
     return gdf1_overlap
+
+
+def rename_lcmap_df_col(
+    df: pd.DataFrame,
+    lcmap: LandCoverMap,
+    lc_prefix="LC_",
+    inplace: bool = False,
+):
+    """
+    Rename the columns of a dataframe that corresponds to LandCoverMap codes.
+    Changes from codes to litteral names.
+
+    :param df: dataframe to renamed the columns from
+    :param lcmap: LandCoverMap that contains the correspondance code<->littereal type
+    :param lc_prefix: Prefix used in the dataframe with the landcover codes
+    :param inplace: If true, changes directly the dataframe (default FALSE)
+    :return: pd.Dataframe
+    """
+
+    lc_cols = df.columns[df.columns.str.startswith(lc_prefix)]
+    if len(lc_cols) == 0:
+        raise IOError("No LandCoverMap codes found. Check columns names")
+
+    cols_to_rename = dict()
+    for col in lc_cols:
+        cols_to_rename[col] = lcmap.get_type_of_code(int(col[-1]))
+
+    df_renamed = df.rename(columns=cols_to_rename, inplace=inplace)
+
+    if inplace is False:
+        return df_renamed
