@@ -10,6 +10,7 @@ from pyce_scripts import lc_distrib
 
 def get_stats_table(
     df_stats,
+    round_dec: int = None,
     col_name_country="Country",
     col_name_glacier="glacier",
     col_name_snow_and_ice="snow_and_ice",
@@ -47,6 +48,7 @@ def get_stats_table(
             col_name_veget_and_water,
             col_name_landcover,
         ],
+        round_dec=round_dec,
         add_total=True,
         slope_correction=slope_correction,
     )
@@ -150,6 +152,7 @@ def plot_donuts(
     col_snow_and_ice="snow_and_ice",
     col_g1850="Total",
     save_dir=None,
+    save_name_ext=None,
 ):
     # Reshape df so each country is a dataframe line
     # ==============================================
@@ -207,8 +210,8 @@ def plot_donuts(
 
         # add external black line
         # -----------------------
-        # circle = plt.Circle((0, 0), inner_radius, color="k", linewidth=5)
-        # ax.add_patch(circle)
+        circle = plt.Circle((0, 0), inner_radius, color="k", linewidth=2)
+        ax.add_patch(circle)
 
         # Plot the pie
         # ------------
@@ -245,7 +248,7 @@ def plot_donuts(
             dict(
                 text=f"{inner_vals[0]:.0f} km²",
                 color="k",
-                fontsize=16,
+                fontsize=15,
                 fontstyle="italic",
                 horizontalalignment="center",
                 x=0,
@@ -271,19 +274,23 @@ def plot_donuts(
         # Shift start angle for no vegetation
         # -----------------------------------
         if outer_vals[2] == 0.0:
-            startangle = -45
+            startangle = -60
         else:
             startangle = 0
 
+        if outer_vals[0] == 0 and outer_vals[-1] == 0:
+            outer_vals = [outer_vals[1]]
+            outer_colors = [outer_colors[1]]
+
         # Redefine outer_vals for small values of snow and ice
         # ----------------------------------------------------
-        shift_snow_and_ice = 0.0
-        if outer_vals[0] / df_donuts_area[col_g1850] * 100 < 1:  # Below 1% of total
-            shift_snow_and_ice = (
-                df_donuts_area[col_g1850] / 100
-            )  # 1% of total in surface
-            outer_vals[0] += shift_snow_and_ice  # add 1% to snow and ice
-            outer_vals[1] -= shift_snow_and_ice  # remove 1% to rocks
+        # shift_snow_and_ice = 0.0
+        # if outer_vals[0] / df_donuts_area[col_g1850] * 100 < 1:  # Below 1% of total
+        #     shift_snow_and_ice = (
+        #         df_donuts_area[col_g1850] / 100
+        #     )  # 1% of total in surface
+        #     outer_vals[0] += shift_snow_and_ice  # add 1% to snow and ice
+        #     outer_vals[1] -= shift_snow_and_ice  # remove 1% to rocks
 
         # Plot pie
         # --------
@@ -293,46 +300,67 @@ def plot_donuts(
             colors=outer_colors,
             autopct=lambda per: "{:.0f}".format(per * np.sum(outer_vals) / 100),
             pctdistance=0.8,
+            labels=[f"{per:.1f}%" for per in outer_vals / np.sum(outer_vals) * 100],
+            labeldistance=1.2,
             wedgeprops=dict(width=wedge_size, edgecolor="k", linewidth=0.5),
             counterclock=False,
             startangle=startangle,
         )
 
-        # Update percentage
-        # -----------------
-        # Remove 0% labels
-        for at in autotexts:
-            if float(at.get_text()[:-1]) != 0.0:
+        # Update surface / percentage
+        # --------------
+        # Remove 0 km
+        for at, lbl in zip(autotexts, labels):
+            if float(at.get_text()) != 0.0:
                 at.update(
                     {
-                        "fontsize": 14,
+                        "fontsize": 12,
                         "fontstyle": "italic",
                         "color": "white",
                         "horizontalalignment": "center",
-                        "verticalalignment": "center_baseline",
+                        "verticalalignment": "center",
+                    }
+                )
+                lbl.update(
+                    {
+                        "fontsize": 14,
+                        "color": "k",
+                        "horizontalalignment": "center",
+                        "verticalalignment": "center",
                     }
                 )
             else:
                 at.update({"text": ""})
+                lbl.update({"text": ""})
 
-        # Move percentage of vegetation
-        autotexts[2].update(
-            dict(
-                x=autotexts[2].get_position()[0] + 0.1,
-                y=autotexts[2].get_position()[1] - 0.05,
+        # Move vegetation
+        if len(labels) > 1:
+            labels[2].update(
+                dict(
+                    x=labels[2].get_position()[0] + 0.1,
+                    y=labels[2].get_position()[1] - 0.05,
+                )
             )
-        )
+
+        # Move percent of roks for swiss
+        if df_donuts_area.name == "CH":
+            labels[1].update(
+                dict(
+                    x=labels[1].get_position()[0] - 0.2,
+                    y=labels[1].get_position()[1] - 0.08,
+                )
+            )
 
         # Put correct values for snow and ice
         # -----------------------------------
-        if shift_snow_and_ice != 0:
-            for at, sign in zip([autotexts[0], autotexts[1]], [-1, 1]):
-                orig_surf = (
-                    float(at.get_text()[:-1]) * df_donuts_area[col_g1850] / 100
-                    + sign * shift_snow_and_ice
-                )
-                orig_percent = orig_surf / df_donuts_area[col_g1850] * 100
-                at.set_text(f"{orig_percent:.1f}%")
+        # if shift_snow_and_ice != 0:
+        #     for at, sign in zip([autotexts[0], autotexts[1]], [-1, 1]):
+        #         orig_surf = (
+        #             float(at.get_text()[:-1]) * df_donuts_area[col_g1850] / 100
+        #             + sign * shift_snow_and_ice
+        #         )
+        #         orig_percent = orig_surf / df_donuts_area[col_g1850] * 100
+        #         at.set_text(f"{orig_percent:.1f}%")
 
         # =============
         # BAR PLOT
@@ -364,8 +392,8 @@ def plot_donuts(
             ymin=None,
             ymax=None,
             per_max=None,
-            color="#bebebe",
-            lw=1,
+            color="k",
+            lw=0.6,
             ls="--",
             zorder=0,
             ax=ax_bar,
@@ -403,8 +431,8 @@ def plot_donuts(
                     s=lbl,
                     ha="right",
                     va="center",
-                    fontsize=10,
-                    color="#bebebe",
+                    fontsize=8,
+                    color="k",
                     rotation=np.rad2deg(angle) - 90,
                     rotation_mode="anchor",
                 )
@@ -468,8 +496,8 @@ def plot_donuts(
             per_lines = np.linspace(angles[0], angles[-1] + width, num=50)
             df_bars_area_percent_max = df_bars_area_percent.max()
 
-            # Plot lines
-            # ----------
+            # Plot percentage lines
+            # ---------------------
             if df_bars_area.name in ["FR", "IT"]:
                 plot_perc_lines(
                     vals=[20, 60],
@@ -537,8 +565,8 @@ def plot_donuts(
             # Add connection line
             # -------------------
             bottom_ls = "-"
-            bottom_lw = 1.1
-            bottom_color = "grey"
+            bottom_lw = 0.6
+            bottom_color = "black"
             bottom_line = np.linspace(
                 angles[0] - angle_offset / 2, angles[-1] + width, num=50
             )
@@ -647,7 +675,9 @@ def plot_donuts(
 
         if save_dir is not None:
             plt.savefig(
-                os.path.join(save_dir, f"donuts_{df_donuts_area.name}_v4.png"),
+                os.path.join(
+                    save_dir, f"donuts_{df_donuts_area.name}_{save_name_ext}.png"
+                ),
                 dpi=200,
-                transparent=False,
+                transparent=True,
             )
