@@ -56,6 +56,7 @@ def get_lc_percent(
 def get_lc_surface(
     df: Union[pd.DataFrame, gpd.GeoDataFrame],
     groupby: [str] = ["Country", "glacier", "veget", "landcover"],
+    round_dec: int = None,
     add_total: bool = True,
     slope_correction: bool = True,
     slope_col_name: str = "slope",
@@ -105,6 +106,9 @@ def get_lc_surface(
         },
         inplace=True,
     )
+
+    if round_dec is not None:
+        ds_surface_all_index = ds_surface_all_index.round(round_dec)
 
     # Add total surface column
     if add_total is True:
