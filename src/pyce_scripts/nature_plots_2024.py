@@ -163,11 +163,12 @@ def plot_donuts(
     # general parameters
     # ==================
     ax_size = 1
-    pie_size = 0.8
-    wedge_size = 0.3
+    pie_size = 0.6
+    wedge_size = 0.2
     margin_inner_pie = 0.04
-    margin_pie_bar = -0.1
+    margin_pie_bar = -0.05
     pad_bar_label = 0.05
+    ratio_bar_angle = 2.5
 
     # ======
     # Plots
@@ -188,9 +189,9 @@ def plot_donuts(
         # =====
         # INNER
         # =====
-        inner_ratio_factor = 1.3
-        inner_radius_min_thresh = 0.02
-        inner_radius_min = 0.02
+        inner_ratio_factor = 1.1
+        inner_radius_min_thresh = 0.01
+        inner_radius_min = 0.005
 
         inner_vals = [df_donuts_area[col_g1850]] * 2
         inner_colors = ["#74a9cf"] * 2
@@ -237,7 +238,7 @@ def plot_donuts(
                 text=f"{df_donuts_area.name}",
                 color="k",
                 weight="bold",
-                fontsize=20,
+                fontsize=18,
                 fontstyle="normal",
                 horizontalalignment="center",
                 x=0,
@@ -248,7 +249,7 @@ def plot_donuts(
             dict(
                 text=f"{inner_vals[0]:.0f} km²",
                 color="k",
-                fontsize=15,
+                fontsize=14,
                 fontstyle="italic",
                 horizontalalignment="center",
                 x=0,
@@ -301,7 +302,7 @@ def plot_donuts(
             autopct=lambda per: "{:.0f}".format(per * np.sum(outer_vals) / 100),
             pctdistance=0.8,
             labels=[f"{per:.1f}%" for per in outer_vals / np.sum(outer_vals) * 100],
-            labeldistance=1.2,
+            labeldistance=1.25,
             wedgeprops=dict(width=wedge_size, edgecolor="k", linewidth=0.5),
             counterclock=False,
             startangle=startangle,
@@ -474,7 +475,7 @@ def plot_donuts(
             # Define the angles
             # -----------------
             indexes = list(range(0, len(df_bars_area.index)))
-            width = np.pi / 2.8 / len(df_bars_area.index)
+            width = np.pi / len(df_bars_area.index) / ratio_bar_angle
 
             angle_offset = (
                 (df_donuts_area[col_veget] / np.sum(outer_vals) * 100) / 50 * np.pi
@@ -584,19 +585,20 @@ def plot_donuts(
             )
 
             # Straigth line
+            y_bottom_line = get_perc_line(
+                -5,
+                ymin=y_lower_limit,
+                ymax=heights.max(),
+                per_max=df_bars_area_percent_max,
+            )
             ax_bar.annotate(
                 "",
                 xy=(
                     angles[0] - angle_offset / 2,
-                    get_perc_line(
-                        -5,
-                        ymin=y_lower_limit,
-                        ymax=heights.max(),
-                        per_max=df_bars_area_percent_max,
-                    ),
+                    y_bottom_line,
                 ),
+                xytext=(angles[0] - angle_offset / 2, y_bottom_line + margin_pie_bar),
                 xycoords="data",
-                xytext=(angles[0] - angle_offset / 2, pie_size + 1.6 * margin_pie_bar),
                 textcoords="data",
                 arrowprops=dict(
                     arrowstyle="-",
@@ -617,7 +619,7 @@ def plot_donuts(
             bottom_ls = "-"
             bottom_lw = 1.1
             bottom_color = "grey"
-            bottom_line = np.linspace(0, np.pi / 3, num=50)
+            bottom_line = np.linspace(0, np.pi / ratio_bar_angle, num=50)
 
             # Bottom arc
             plot_perc_lines(
@@ -632,19 +634,20 @@ def plot_donuts(
             )
 
             # Straigth line
+            y_bottom_line = get_perc_line(
+                -5,
+                ymin=y_lower_limit,
+                ymax=heights.max(),
+                per_max=df_bars_area_percent_max,
+            )
             ax_bar.annotate(
                 "",
                 xy=(
                     0,
-                    get_perc_line(
-                        -5,
-                        ymin=pie_size,
-                        ymax=1,
-                        per_max=60,
-                    ),
+                    y_bottom_line,
                 ),
                 xycoords="data",
-                xytext=(0, pie_size + 1.6 * margin_pie_bar),
+                xytext=(0, y_bottom_line + margin_pie_bar),
                 textcoords="data",
                 arrowprops=dict(
                     arrowstyle="-",
@@ -660,7 +663,7 @@ def plot_donuts(
             # Text
             # ----
             ax_bar.text(
-                np.pi / 3 / 2,
+                np.pi / ratio_bar_angle / 2.5,
                 pie_size + 0.3,
                 "No vegetation\nNo water",
                 style="italic",
@@ -673,6 +676,373 @@ def plot_donuts(
         # plt.tight_layout()
         plt.show()
 
+        if save_dir is not None:
+            plt.savefig(
+                os.path.join(
+                    save_dir, f"donuts_{df_donuts_area.name}_{save_name_ext}.png"
+                ),
+                dpi=200,
+                transparent=True,
+            )
+
+
+def plot_donuts_classic(
+    df_donuts: pd.DataFrame,
+    df_bars: pd.DataFrame,
+    lcmap: LandCoverMap,
+    col_veget="vegetation_and_water",
+    col_rocks="rocks",
+    col_snow_and_ice="snow_and_ice",
+    col_g1850="Total",
+    figsize=(6, 5),
+    ratio_heights_bar=0.6,
+    save_dir=None,
+    save_name_ext=None,
+):
+    # Reshape df so each country is a dataframe line
+    # ==============================================
+    df_donuts = df_donuts.unstack(level=1).fillna(0)["Surface"]
+    df_bars_perc = df_bars.unstack(level=1).fillna(0)["percent"]
+    df_bars = df_bars.unstack(level=1).fillna(0)["Surface"]
+
+    # general parameters
+    # ==================
+
+    # ======
+    # Plots
+    # =====
+    for area in range(df_donuts.shape[0]):
+        # ========
+        # Get Data
+        # ========
+        df_donuts_area = df_donuts.iloc[area]
+
+        # ======
+        # Figure
+        # =======
+        fig, axes = plt.subplot_mosaic(
+            """
+            AA
+            BC
+            """,
+            layout="constrained",
+            figsize=figsize,
+            height_ratios=[ratio_heights_bar, 1 - ratio_heights_bar],
+        )
+        for ax in [axes["B"], axes["C"]]:
+            ax.set_xlim([-1, 1])
+            ax.set_ylim([-1, 1])
+            ax.set_aspect("equal")
+
+        for ax in [axes["A"], axes["B"], axes["C"]]:
+            ax.axis("off")
+
+        # ======================
+        # B plot - Total surface
+        # ======================
+        ax = axes["B"]
+        inner_ratio_factor = 1.1
+        inner_radius_min_thresh = 0.01
+        inner_radius_min = 0.025
+
+        inner_vals = df_donuts_area[col_g1850]
+        inner_colors = "#74a9cf"
+
+        # Define radius of circle
+        # -----------------------
+        inner_ratio = (
+            inner_vals / df_donuts.loc[df_donuts.index == "Alps", col_g1850].iloc[0]
+        )
+        if inner_ratio != 1:
+            inner_ratio *= inner_ratio_factor
+
+        if inner_ratio < inner_radius_min_thresh:
+            inner_ratio = inner_radius_min
+
+        # Plot circle
+        # -----------
+        circle = plt.Circle(
+            (0, 0),
+            inner_ratio,
+            facecolor=inner_colors,
+            linewidth=0.5,
+            edgecolor="k",
+        )
+        ax.add_patch(circle)
+
+        # Put labels to circle
+        # ---------------------
+        if df_donuts_area.name != "Alps":
+            inner_label_pos = inner_ratio + 0.1
+        else:
+            inner_label_pos = 0.1
+
+        ax.text(
+            x=0,
+            y=inner_label_pos,
+            s=f"{df_donuts_area.name}",
+            color="k",
+            weight="bold",
+            fontsize=18,
+            fontstyle="normal",
+            horizontalalignment="center",
+            verticalalignment="bottom",
+        )
+        ax.text(
+            x=0,
+            y=-inner_label_pos,
+            s=f"{inner_vals:.0f} km²",
+            color="k",
+            fontsize=16,
+            fontstyle="italic",
+            horizontalalignment="center",
+            verticalalignment="top",
+        )
+
+        # ====================
+        # C plot - Pie surface
+        # ====================
+        ax = axes["C"]
+        outer_vals = [
+            df_donuts_area[col_snow_and_ice],
+            df_donuts_area[col_rocks],
+            df_donuts_area[col_veget],
+        ]
+
+        outer_colors = [
+            lcmap.get_color_of_code(code=4),
+            lcmap.get_color_of_code(code=0),
+            lcmap.get_color_of_code(code=3),
+        ]
+
+        # Shift start angle for no vegetation
+        # -----------------------------------
+        if outer_vals[2] == 0.0:
+            startangle = 90 + 90
+            pctdistance = 0
+        else:
+            startangle = 90
+            pctdistance = 0.4
+
+        # To avoid extra lines for only rocks
+        if outer_vals[0] == 0 and outer_vals[-1] == 0:
+            outer_vals = [outer_vals[1]]
+            outer_colors = [outer_colors[1]]
+
+        # Plot pie
+        # --------
+        wedges, labels, autotexts = ax.pie(
+            outer_vals,
+            radius=1,
+            colors=outer_colors,
+            autopct=lambda per: "{:.0f}".format(per * np.sum(outer_vals) / 100),
+            pctdistance=pctdistance,
+            labels=[f"{per:.1f}%" for per in outer_vals / np.sum(outer_vals) * 100],
+            labeldistance=1.4,
+            wedgeprops=dict(edgecolor="k", linewidth=0.5),
+            counterclock=True,
+            startangle=startangle,
+            frame=True,
+        )
+        ax.axis("off")  # Need to do so to have pie same size as left circle
+        ax.set_xlim([-1, 1])
+        ax.set_ylim([-1, 1])
+
+        # Update surface / percentage
+        # ---------------------------
+        # Remove 0 km
+        for at, lbl in zip(autotexts, labels):
+            if float(at.get_text()) != 0.0:
+                at.update(
+                    {
+                        "fontsize": 14,
+                        "fontstyle": "italic",
+                        "color": "white",
+                        "horizontalalignment": "center",
+                        "verticalalignment": "center",
+                    }
+                )
+                lbl.update(
+                    {
+                        "fontsize": 16,
+                        "color": "k",
+                        "horizontalalignment": "center",
+                        "verticalalignment": "center",
+                    }
+                )
+            else:
+                at.update({"text": ""})
+                lbl.update({"text": ""})
+
+        # Move vegetation
+        if len(labels) > 1:
+            labels[2].update(
+                dict(
+                    x=labels[2].get_position()[0] + 0.5,
+                    y=labels[2].get_position()[1] - 0.3,
+                )
+            )
+            autotexts[2].update(
+                dict(
+                    x=autotexts[2].get_position()[0] + 0.05,
+                    y=autotexts[2].get_position()[1] + 0.4,
+                )
+            )
+
+        # ============================
+        # A plot - Vegetation bar plot
+        # ============================
+        ax = axes["A"]
+        if df_donuts_area.name in df_bars.index:
+            # Get data
+            # --------
+            df_bars_area = df_bars.loc[df_bars.index == df_donuts_area.name].iloc[0]
+            df_bars_area_percent = df_bars_perc.loc[
+                df_bars_perc.index == df_donuts_area.name
+            ].iloc[0]
+
+            df_bars_area = df_bars_area[
+                [
+                    "LC_6",
+                    "LC_1",
+                    "LC_2",
+                    "LC_3",
+                    "LC_5",
+                ]
+            ]
+            df_bars_area_percent = df_bars_area_percent[
+                [
+                    "LC_6",
+                    "LC_1",
+                    "LC_2",
+                    "LC_3",
+                    "LC_5",
+                ]
+            ]
+
+            colors = [
+                lcmap.get_color_of_code(int(code[-1])) for code in df_bars_area.index
+            ]
+            labels = [
+                lcmap.get_type_of_code(int(code[-1])) for code in df_bars_area.index
+            ]
+
+            # Scale and offset size of each bar
+            # ---------------------------------
+            if df_bars_area.name != "Alps":
+                df_bars_max = (df_bars.loc[df_bars.index == "CH"].iloc[0]).max()
+            else:
+                df_bars_max = (df_bars.loc[df_bars.index == "Alps"].iloc[0]).max()
+
+            heights = df_bars_area.values / df_bars_max
+
+            # Parameters
+            # ----------
+            width = 0.2
+            bar_pad = 0.2
+            x_pos = [1 + (width + bar_pad) * i for i in range(len(labels))]
+            x_shift = 0.5
+
+            ax.set_xlim([x_pos[0] - x_shift * 0.9, x_pos[-1] + x_shift * 1.1])
+            ax.set_ylim([-0.05, 1.1])
+
+            # Add percentage lines
+            # --------------------
+            def get_perc_line(
+                val,
+                ymax=None,
+                per_max=None,
+            ):
+                return val * ymax / per_max
+
+            def plot_perc_lines(
+                val,
+                xmin=x_pos[0] - width * 1.2,
+                xmax=x_pos[-1] + width,
+                ymax=heights.max(),
+                per_max=df_bars_area_percent.max(),
+                ax=ax,
+                nopercent=False,
+            ):
+                yval = get_perc_line(val, ymax=ymax, per_max=per_max)
+
+                ax.hlines(
+                    yval,
+                    xmin,
+                    xmax,
+                    colors="k",
+                    ls="--",
+                    lw=1,
+                    zorder=0,
+                )
+                add_perc_label(val, yval, nopercent=nopercent)
+
+            def add_perc_label(y, yval, nopercent=False):
+                if nopercent:
+                    lbl = " "
+                else:
+                    lbl = "%"
+
+                ax.text(
+                    x_pos[0] - width * 1.2,
+                    yval,
+                    f"{int(y)}{lbl} ",
+                    ha="right",
+                    va="center",
+                    fontsize=8,
+                    color="k",
+                )
+
+            # PLots lines
+            ax.hlines(0, x_pos[0] - width, x_pos[-1] + width, colors="k", lw=2.0)
+            plot_perc_lines(val=5, nopercent=True)
+            plot_perc_lines(val=20, nopercent=True)
+            plot_perc_lines(val=60)
+
+            # Plots bars
+            # ===========
+            bars = ax.bar(
+                x=x_pos,
+                height=heights,
+                width=width,
+                bottom=0,
+                align="center",
+                color=colors,
+            )
+            bars_label = ax.bar(
+                x=x_pos,
+                height=[heights.max()] * len(heights),
+                width=width,
+                bottom=0,
+                align="center",
+                color=["#ffffff00"] * 6,
+            )
+            ax.bar_label(
+                bars_label,
+                labels=df_bars_area.values,
+                fmt="%.1f",
+                padding=5,
+                fontsize=12,
+            )
+            ax.text(x_pos[-1] + width / 2, heights.max() + 0.05, " [km²]", fontsize=11)
+
+        # For DE and SL
+        # -------------
+        else:
+            ax.set_xlim([-1, 1])
+            ax.set_ylim([-0.05, 1.1])
+            ax.hlines(0, -1 * 0.6, 1 * 0.4, colors="k", lw=2.0)
+            ax.text(
+                -0.5,
+                0.2,
+                "No vegetation / No water",
+                fontsize=12,
+                style="italic",
+            )
+
+        # Show and save
+        # =============
+        plt.show()
         if save_dir is not None:
             plt.savefig(
                 os.path.join(
