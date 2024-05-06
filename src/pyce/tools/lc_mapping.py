@@ -1,4 +1,5 @@
 import copy
+from importlib import reload
 from typing import Union
 
 import numpy as np
@@ -6,6 +7,8 @@ import pandas as pd
 import xarray
 from matplotlib.colors import BoundaryNorm, ListedColormap
 from pyce.tools import lc_colormaps
+
+reload(lc_colormaps)
 
 # GLOBAL PARAMATERS
 # =================
@@ -57,9 +60,17 @@ h1a_rf = {
 h1b = {
     _mapping_kwargs: {"col_type": 0, "col_code": 1, "header": None, "sep": ":"},
     _lcm_colors: lc_colormaps.colors_h1b,
-    _lcm_codes_to_mask: None,
+    _lcm_codes_to_mask: [10],
     _lcm_mask_val: None,
     _lcm_reindex: [3, 2, 1, 6, 0, 4, 5],
+}
+
+h1b_paper = {
+    _mapping_kwargs: {"col_type": 0, "col_code": 1, "header": None, "sep": ":"},
+    _lcm_colors: lc_colormaps.colors_h1b_paper,
+    _lcm_codes_to_mask: None,
+    _lcm_mask_val: None,
+    _lcm_reindex: [3, 2, 1, 6, 0, 4, 5, 10],
 }
 
 s2glc = {
@@ -85,6 +96,7 @@ dict_lc_maps = {
     "h1a_rf": h1a_rf,
     "s2glc": s2glc,
     "h1b": h1b,
+    "h1b_paper": h1b_paper,
 }
 
 
