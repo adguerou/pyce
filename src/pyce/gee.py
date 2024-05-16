@@ -229,6 +229,38 @@ def ic_monthly_median(
         return monthly_median_coll
 
 
+def split_FeatureCollection(
+    fc: ee.FeatureCollection, chunk: int = None, n_parts: int = None
+) -> list[ee.FeatureCollection]:
+    """
+    Split a FeatureCollection object into a list of FeatureCollection. The number of Feature
+    to be included in each resulting FeatureCollection is controlled by the chunk size or the
+    number of FeatureCollection in the resulting list.
+    This is useful to lower the memory usage when using a sampleRegions onto the FeatureCollection.
+
+
+    :param fc: FeatureCollection
+    :param chunk: Number of Features to be included in each resulting FeatureCollection
+    :param n_parts: Number of FeatureCollection to create.
+    :return: list[ee.FeatureCollection]
+    """
+    if chunk is None and n_parts is None:
+        raise IOError("chunk OR n_parts must be set")
+    if chunk is not None and n_parts is not None:
+        raise IOError("chunk AND n_parts CANNOT be set simultaneously")
+
+    # Get the number of Feature
+    fc_size = fc.size().getInfo()
+
+    if n_parts is not None:
+        chunk = int(fc_size / n_parts) + 1
+
+    if chunk is not None:
+        n_parts = int(fc_size / chunk) + 1
+
+    return [fc.toList(count=chunk, offset=chunk * npart) for npart in range(n_parts)]
+
+
 # =====================================================================================
 # RANDOM FOREST CLASSIFICATION
 # =====================================================================================
