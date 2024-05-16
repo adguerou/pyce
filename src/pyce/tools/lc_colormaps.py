@@ -104,5 +104,5 @@ colors_h1b_paper = [
     "#a6cee3",  # glaciers ou neige
     "#1f78b4",  # eau
     "#fff2ae",  # sols peu végétalisés
-    "#33a02c",  # vegetation / not used here
+    "#33a02c",  # vegetation
 ]
