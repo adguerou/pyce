@@ -163,10 +163,10 @@ def plot_donuts(
     # general parameters
     # ==================
     ax_size = 1
-    pie_size = 0.6
+    pie_size = 0.65
     wedge_size = 0.2
     margin_inner_pie = 0.04
-    margin_pie_bar = -0.05
+    margin_pie_bar = 0.01
     pad_bar_label = 0.05
     ratio_bar_angle = 2.5
 
@@ -211,7 +211,7 @@ def plot_donuts(
 
         # add external black line
         # -----------------------
-        circle = plt.Circle((0, 0), inner_radius, color="k", linewidth=2)
+        circle = plt.Circle((0, 0), inner_radius, color="k", linewidth=3)
         ax.add_patch(circle)
 
         # Plot the pie
@@ -250,7 +250,6 @@ def plot_donuts(
                 text=f"{inner_vals[0]:.0f} km²",
                 color="k",
                 fontsize=14,
-                fontstyle="italic",
                 horizontalalignment="center",
                 x=0,
                 y=-inner_label_pos,
@@ -299,11 +298,11 @@ def plot_donuts(
             outer_vals,
             radius=pie_size,
             colors=outer_colors,
-            autopct=lambda per: "{:.0f}".format(per * np.sum(outer_vals) / 100),
-            pctdistance=0.8,
-            labels=[f"{per:.1f}%" for per in outer_vals / np.sum(outer_vals) * 100],
-            labeldistance=1.25,
-            wedgeprops=dict(width=wedge_size, edgecolor="k", linewidth=0.5),
+            autopct=lambda per: "{:.1f}%".format(per),
+            pctdistance=0.82,
+            labels=[f"{surf:.0f}" for surf in outer_vals],
+            labeldistance=1.2,
+            wedgeprops=dict(width=wedge_size, edgecolor="k", linewidth=1),
             counterclock=False,
             startangle=startangle,
         )
@@ -312,12 +311,12 @@ def plot_donuts(
         # --------------
         # Remove 0 km
         for at, lbl in zip(autotexts, labels):
-            if float(at.get_text()) != 0.0:
+            if float(at.get_text()[:-1]) != 0.0:
                 at.update(
                     {
-                        "fontsize": 12,
-                        "fontstyle": "italic",
+                        "fontsize": 11,
                         "color": "white",
+                        "fontstyle": "italic",
                         "horizontalalignment": "center",
                         "verticalalignment": "center",
                     }
@@ -338,12 +337,19 @@ def plot_donuts(
         if len(labels) > 1:
             labels[2].update(
                 dict(
-                    x=labels[2].get_position()[0] + 0.1,
+                    x=labels[2].get_position()[0] + 0.15,
                     y=labels[2].get_position()[1] - 0.05,
                 )
             )
-
-        # Move percent of roks for swiss
+            autotexts[2].update(
+                dict(
+                    text=f"({autotexts[2].get_text()})",
+                    x=labels[2].get_position()[0] - 0.01,
+                    y=labels[2].get_position()[1] - 0.12,
+                    color="k",
+                )
+            )
+        # Move percent of rocks for swiss
         if df_donuts_area.name == "CH":
             labels[1].update(
                 dict(
@@ -352,6 +358,14 @@ def plot_donuts(
                 )
             )
 
+        # Move surface of snow for Austria
+        if df_donuts_area.name == "AT":
+            labels[0].update(
+                dict(
+                    x=labels[0].get_position()[0] + 0.3,
+                    y=labels[0].get_position()[1] + 0.18,
+                )
+            )
         # Put correct values for snow and ice
         # -----------------------------------
         # if shift_snow_and_ice != 0:
@@ -484,7 +498,7 @@ def plot_donuts(
 
             # Scale and offset size of each bar
             # ---------------------------------
-            y_lower_limit = pie_size + margin_pie_bar  # bottom of bars
+            y_lower_limit = pie_size - margin_pie_bar  # bottom of bars
             if df_bars_area.name != "Alps":
                 df_bars_max = (df_bars.loc[df_bars.index == "CH"].iloc[0]).max()
             else:
@@ -566,17 +580,17 @@ def plot_donuts(
             # Add connection line
             # -------------------
             bottom_ls = "-"
-            bottom_lw = 0.6
-            bottom_color = "black"
+            bottom_lw = 1.5
+            bottom_color = "k"
             bottom_line = np.linspace(
                 angles[0] - angle_offset / 2, angles[-1] + width, num=50
             )
 
             # Bottom arc
             plot_perc_lines(
-                vals=[-5],
+                vals=[0],
                 angles=bottom_line,
-                ymin=y_lower_limit,
+                ymin=y_lower_limit - margin_pie_bar,  # pie_size * 0.92,
                 ymax=heights.max(),
                 per_max=df_bars_area_percent_max,
                 color=bottom_color,
@@ -586,8 +600,8 @@ def plot_donuts(
 
             # Straigth line
             y_bottom_line = get_perc_line(
-                -5,
-                ymin=y_lower_limit,
+                val=0,
+                ymin=y_lower_limit - margin_pie_bar,  # pie_size * 0.92,
                 ymax=heights.max(),
                 per_max=df_bars_area_percent_max,
             )
@@ -595,17 +609,21 @@ def plot_donuts(
                 "",
                 xy=(
                     angles[0] - angle_offset / 2,
+                    pie_size - wedge_size / 1.5,
+                ),
+                xytext=(
+                    angles[0] - angle_offset / 2,
                     y_bottom_line,
                 ),
-                xytext=(angles[0] - angle_offset / 2, y_bottom_line + margin_pie_bar),
                 xycoords="data",
                 textcoords="data",
                 arrowprops=dict(
-                    arrowstyle="-",
+                    arrowstyle="-|>",
                     ls=bottom_ls,
                     lw=bottom_lw,
                     color=bottom_color,
                     patchB=None,
+                    shrinkA=0,
                     shrinkB=0,
                     connectionstyle="arc",
                 ),
@@ -617,15 +635,15 @@ def plot_donuts(
             # Add connection line
             # -------------------
             bottom_ls = "-"
-            bottom_lw = 1.1
-            bottom_color = "grey"
+            bottom_lw = 1.5
+            bottom_color = "k"
             bottom_line = np.linspace(0, np.pi / ratio_bar_angle, num=50)
 
             # Bottom arc
             plot_perc_lines(
-                vals=[-5],
+                vals=[0],
                 angles=bottom_line,
-                ymin=pie_size,
+                ymin=y_lower_limit - margin_pie_bar,
                 ymax=1,
                 per_max=60,
                 color=bottom_color,
@@ -635,26 +653,30 @@ def plot_donuts(
 
             # Straigth line
             y_bottom_line = get_perc_line(
-                -5,
-                ymin=y_lower_limit,
+                0,
+                ymin=y_lower_limit - margin_pie_bar,
                 ymax=heights.max(),
                 per_max=df_bars_area_percent_max,
             )
             ax_bar.annotate(
                 "",
                 xy=(
-                    0,
+                    bottom_line[0],
+                    pie_size - wedge_size / 1.5,
+                ),
+                xytext=(
+                    bottom_line[0],
                     y_bottom_line,
                 ),
                 xycoords="data",
-                xytext=(0, y_bottom_line + margin_pie_bar),
                 textcoords="data",
                 arrowprops=dict(
-                    arrowstyle="-",
+                    arrowstyle="-|>",
                     ls=bottom_ls,
                     lw=bottom_lw,
                     color=bottom_color,
                     patchB=None,
+                    shrinkA=0,
                     shrinkB=0,
                     connectionstyle="arc",
                 ),
@@ -664,10 +686,10 @@ def plot_donuts(
             # ----
             ax_bar.text(
                 np.pi / ratio_bar_angle / 2.5,
-                pie_size + 0.3,
+                pie_size + 0.35,
                 "No vegetation\nNo water",
                 style="italic",
-                fontsize=10,
+                fontsize=11,
                 ha="right",
             )
 
@@ -778,7 +800,7 @@ def plot_donuts_classic(
             (x_pos_circle, 0),
             inner_ratio,
             facecolor=inner_colors,
-            linewidth=0.5,
+            linewidth=2,
             edgecolor="k",
         )
         ax.add_patch(circle)
@@ -796,7 +818,7 @@ def plot_donuts_classic(
             s=f"{df_donuts_area.name}",
             color="k",
             weight="bold",
-            fontsize=18,
+            fontsize=22,
             fontstyle="normal",
             horizontalalignment="center",
             verticalalignment="bottom",
@@ -851,9 +873,9 @@ def plot_donuts_classic(
             colors=outer_colors,
             autopct="%.1f%%",
             pctdistance=pctdistance,
-            labels=[f"{surf:.0f}" for surf in outer_vals],
+            labels=[f"{surf:.0f} km²" for surf in outer_vals],
             labeldistance=labeldistance,
-            wedgeprops=dict(edgecolor="k", linewidth=0.5),
+            wedgeprops=dict(edgecolor="k", linewidth=2),
             counterclock=True,
             startangle=startangle,
             frame=True,
@@ -866,17 +888,17 @@ def plot_donuts_classic(
             if float(at.get_text()[:-1]) != 0.0:
                 at.update(
                     dict(
-                        fontsize=14,
-                        fontstyle="italic",
-                        color="white",
+                        fontsize=16,
+                        color="k",
                         ha="center",
                         va="center",
                     )
                 )
                 lbl.update(
                     dict(
-                        fontsize=16,
-                        color="k",
+                        fontsize=13,
+                        fontstyle="italic",
+                        color="white",
                         ha="center",
                         va="center",
                         x=lbl.get_position()[0],
