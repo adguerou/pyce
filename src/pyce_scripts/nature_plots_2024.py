@@ -2,7 +2,12 @@ import os
 
 import numpy as np
 import pandas as pd
+import seaborn as sbn
 from matplotlib import pyplot as plt
+from matplotlib.collections import PolyCollection
+from matplotlib.legend_handler import HandlerTuple
+from matplotlib.ticker import MultipleLocator
+from pyce.tools import lc_mapping
 from pyce.tools.lc_mapping import LandCoverMap
 
 from pyce_scripts import lc_distrib
@@ -315,7 +320,6 @@ def plot_donuts(
                 at.update(
                     {
                         "fontsize": 11,
-                        "color": "white",
                         "fontstyle": "italic",
                         "horizontalalignment": "center",
                         "verticalalignment": "center",
@@ -1131,3 +1135,174 @@ def plot_donuts_classic(
                 dpi=200,
                 transparent=True,
             )
+
+
+def plot_violin(df, lcmap, save_dir, save_name):
+    """
+
+    :param df:
+    :param lcmap:
+    :param save_dir:
+    :param save_name:
+    :return:
+    """
+
+    # Reorder lcmap for plottings
+    # ===========================
+    lcmap_reindex = lcmap.reindex(reverse=True, in_place=False)
+    lcmap_reindex.remove_item(
+        col_name="Code", col_val=[10], in_place=True
+    )  # Do it after reindex otherwise bug
+
+    lcmap_ordered = lcmap.remove_item(col_name="Code", col_val=[10], in_place=False)
+    lcmap_ordered.reindex_from_col_val(
+        col_name="Type",
+        values=["shrubs", "forest", "water", "sparse veget.", "grass", "rocks", "snow"],
+        in_place=True,
+    )
+
+    # Figure
+    # ======
+    f1, axes = plt.subplots(1, 1, figsize=(5, 5))
+
+    # Plot
+    ax = sbn.violinplot(
+        data=df,
+        x="altitude",
+        y="landcover",
+        orient="horizontal",
+        hue="lia",
+        order=lcmap_reindex.get_code(),
+        hue_order=[True, False],
+        density_norm="width",
+        cut=0,
+        width=1,
+        split=True,
+        gap=0.05,
+        inner="quart",
+        legend=True,
+        ax=axes,
+    )
+
+    # Colors and legend
+    # =================
+    colors_double = []
+    for color in list(lcmap_reindex.get_colors()):
+        colors_double.append(color)
+        colors_double.append(color)
+
+    handles = []
+    for (ind, violin), color in zip(
+        enumerate(ax.findobj(PolyCollection)), colors_double
+    ):
+        alpha = 1
+        if ind % 2 != 0:
+            alpha = 0.4
+        violin.set_facecolor(color)
+        violin.set_alpha(alpha=alpha)
+        handles.append(
+            plt.Rectangle(
+                (0, 0), 0, 0, facecolor=color, alpha=alpha - 0.1, edgecolor="black"
+            )
+        )
+
+    # Legend
+    labels = [lbl.replace(" ", "\n") for lbl in lcmap_reindex.get_type()]
+    ax.legend(
+        handles=[tuple(handles[::2]), tuple(handles[1::2])],
+        labels=["LIA", "Outside LIA"],
+        title=None,
+        handlelength=4,
+        loc=4,
+        frameon=False,
+        handler_map={tuple: HandlerTuple(ndivide=None, pad=0)},
+    )
+
+    ax.set_xlabel("Altitude [m]", fontsize=14, labelpad=10)
+    ax.set_yticklabels(labels)
+    ax.set(ylabel=None)
+
+    # Add percentage for each violin
+    # ==============================
+    # Get percentage for LIA deiced
+    surf_deiced = lc_distrib.get_lc_surface(
+        df.loc[df.lia == True],
+        groupby=["Country", "landcover"],
+        round_dec=1,
+        add_total=True,
+        slope_correction=True,
+    )
+    surf_deiced.loc["Alps"] = surf_deiced.sum(numeric_only=True)
+    perc_deiced = (surf_deiced.div(surf_deiced.Total_LC, axis=0) * 100).drop(
+        "Total_LC", axis=1
+    )
+    perc_deiced_alps = (
+        perc_deiced[
+            [f"LC_{code}" for code in lcmap_reindex.get_code()]
+        ]  # Reorder landcover
+        .loc[perc_deiced.index == "Alps"]
+        .values[0]  # Get as array
+    )
+
+    # Get percentage for outside LIA
+    surf_out = lc_distrib.get_lc_surface(
+        df.loc[df.lia == False],
+        groupby=["Country", "landcover"],
+        round_dec=2,
+        add_total=True,
+        slope_correction=True,
+    )
+    surf_out.loc["Alps"] = surf_out.sum(numeric_only=True)
+    perc_out = (surf_out.div(surf_out.Total_LC, axis=0) * 100).drop("Total_LC", axis=1)
+    perc_out_alps = (
+        perc_out[
+            [f"LC_{code}" for code in lcmap_reindex.get_code()]
+        ]  # Reorder landcover
+        .loc[perc_out.index == "Alps"]
+        .values[0]  # Get as array
+    )
+
+    # Plot
+    # ====
+    x_pos = (
+        df.groupby(["landcover"])["altitude"]
+        .max()
+        .reindex(lcmap_reindex.get_code())
+        .tolist()
+    )
+    x_pos[2] = 3800  # modify rocks position
+    y_pos = range(len(x_pos))
+
+    for i in range(len(x_pos)):
+        ax.text(
+            x_pos[i],
+            y_pos[i] - 0.15,  # -0...as y axis origin is up
+            f"{perc_deiced_alps[i]:.1f}%",
+            va="center",
+        )
+        ax.text(
+            x_pos[i],
+            y_pos[i] + 0.2,  # +0... as y axis origin is up
+            f"{perc_out_alps[i]:.1f}%",
+            alpha=0.6,
+            va="center",
+        )
+
+    # Grid and general parameters
+    # ===========================
+    sbn.despine(ax=ax, left=True)
+    ax.tick_params(left=False, rotation=0, pad=-5, axis="y")
+    ml = MultipleLocator(250)
+    ax.xaxis.set_minor_locator(ml)
+
+    ax.set_axisbelow(True)
+    ax.grid(ls="--", which="minor", color="lightgrey", zorder=0)
+    ax.grid(ls="--", which="major", color="lightgrey", zorder=0)
+
+    ax.yaxis.grid(False)
+
+    plt.tight_layout()
+    plt.show()
+
+    if save_name is not None:
+        plt.savefig(os.path.join(save_dir, save_name), dpi=300)
