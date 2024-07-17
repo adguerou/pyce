@@ -99,7 +99,8 @@ def select_overlapping_shapes(
 def rename_lcmap_df_col(
     df: pd.DataFrame,
     lcmap: LandCoverMap,
-    lc_prefix="LC_",
+    col: str = "landcover",
+    prefix: bool = True,
     inplace: bool = False,
 ):
     """
@@ -108,20 +109,22 @@ def rename_lcmap_df_col(
 
     :param df: dataframe to renamed the columns from
     :param lcmap: LandCoverMap that contains the correspondance code<->littereal type
-    :param lc_prefix: Prefix used in the dataframe with the landcover codes
+    :param col: column of the dataframe containing the landcover codes
     :param inplace: If true, changes directly the dataframe (default FALSE)
     :return: pd.Dataframe
     """
 
-    lc_cols = df.columns[df.columns.str.startswith(lc_prefix)]
+    lc_cols = df.columns[df.columns.str.startswith(col)]
     if len(lc_cols) == 0:
-        raise IOError("No LandCoverMap codes found. Check columns names")
+        raise IOError("No LandCoverMap column found. Check column name")
 
-    cols_to_rename = dict()
-    for col in lc_cols:
-        cols_to_rename[col] = lcmap.get_type_of_code(int(col[-1]))
+    if not inplace:
+        df = df.copy()
 
-    df_renamed = df.rename(columns=cols_to_rename, inplace=inplace)
+    if prefix:
+        df[col] = df[col].apply(lambda x: lcmap.get_type_of_code(int(x[-1])))
+    else:
+        df[col] = df[col].apply(lambda x: lcmap.get_type_of_code(x))
 
     if inplace is False:
-        return df_renamed
+        return df
