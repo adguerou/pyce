@@ -14,43 +14,41 @@ from pyce.tools.lc_mapping import LandCoverMap
 
 
 def get_lc_percent(
-    shp_file: Union[str, gpd.GeoDataFrame],
+    df_input: Union[str, gpd.GeoDataFrame, pd.DataFrame],
     groupby: list[str],
     lc_col_name: str = "LC",
 ):
     # Open shp file + remove corrupted item with no geometry
-    if isinstance(shp_file, str):
-        gdf = gpd.read_file(shp_file)
-        gdf = gdf.iloc[np.where(gdf["geometry"].values != None)]
-    elif isinstance(shp_file, gpd.GeoDataFrame):
-        gdf = shp_file
+    if isinstance(df_input, str):
+        df = gpd.read_file(df_input)
+        df = df.iloc[np.where(df["geometry"].values != None)]
     else:
-        raise TypeError("'shp_file' must be either a str or a GeoDataFrame")
+        df = df_input
 
     # Get a multi_index dataframe (groupby) with each colum being
     # the LC sum values per group for each LC class
-    gdf_percent_by_group = gdf.groupby(groupby)[
-        gdf.columns[gdf.columns.str.startswith(lc_col_name)]
+    df_percent_by_group = df.groupby(groupby)[
+        df.columns[df.columns.str.startswith(lc_col_name)]
     ].sum()
 
     # Add columns with the LC total counts (all LC types) per group (rows)
-    gdf_percent_by_group[f"Total_{lc_col_name}"] = gdf_percent_by_group.sum(axis=1)
+    df_percent_by_group[f"Total_{lc_col_name}"] = df_percent_by_group.sum(axis=1)
 
     # Transform each LC columns count to percentage, for each group
-    gdf_percent_by_group[
-        gdf_percent_by_group.columns[
-            gdf_percent_by_group.columns.str.startswith(lc_col_name)
+    df_percent_by_group[
+        df_percent_by_group.columns[
+            df_percent_by_group.columns.str.startswith(lc_col_name)
         ]
     ] = (
-        gdf_percent_by_group[
-            gdf_percent_by_group.columns[
-                gdf_percent_by_group.columns.str.startswith(lc_col_name)
+        df_percent_by_group[
+            df_percent_by_group.columns[
+                df_percent_by_group.columns.str.startswith(lc_col_name)
             ]
-        ].div(gdf_percent_by_group[f"Total_{lc_col_name}"], axis=0)
+        ].div(df_percent_by_group[f"Total_{lc_col_name}"], axis=0)
         * 100.0
     )
 
-    return gdf_percent_by_group
+    return df_percent_by_group
 
 
 def get_lc_surface(
@@ -76,12 +74,13 @@ def get_lc_surface(
     if f"{area_col_name}{area_corrected_col_name}" in list(df.columns):
         pass
     else:
-        df[
-            f"{area_col_name}{area_corrected_col_name}"
-        ] = raster.get_area_slope_corrected(
-            df[area_col_name], df[slope_col_name], sum=False
+        df.insert(
+            loc=len(df.columns),
+            column=f"{area_col_name}{area_corrected_col_name}",
+            value=raster.get_area_slope_corrected(
+                df[area_col_name], df[slope_col_name], sum=False
+            ),
         )
-
     # Get dataframe of surface per group
     df_surface = (
         df.groupby(groupby, observed=False)[
