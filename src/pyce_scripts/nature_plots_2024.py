@@ -273,7 +273,7 @@ def plot_donuts(
         outer_colors = [
             lcmap.get_color_of_code(code=4),
             lcmap.get_color_of_code(code=0),
-            lcmap.get_color_of_code(code=10),
+            lcmap.get_color_of_code(code=9),
         ]
 
         # Shift start angle for no vegetation
@@ -850,7 +850,7 @@ def plot_donuts_classic(
         outer_colors = [
             lcmap.get_color_of_code(code=4),
             lcmap.get_color_of_code(code=0),
-            lcmap.get_color_of_code(code=10),
+            lcmap.get_color_of_code(code=9),
         ]
 
         # Shift start angle for no vegetation
@@ -1151,15 +1151,8 @@ def plot_violin(df, lcmap, save_dir, save_name):
     # ===========================
     lcmap_reindex = lcmap.reindex(reverse=True, in_place=False)
     lcmap_reindex.remove_item(
-        col_name="Code", col_val=[10], in_place=True
+        col_name="Code", col_val=[9], in_place=True
     )  # Do it after reindex otherwise bug
-
-    lcmap_ordered = lcmap.remove_item(col_name="Code", col_val=[10], in_place=False)
-    lcmap_ordered.reindex_from_col_val(
-        col_name="Type",
-        values=["shrubs", "forest", "water", "sparse veget.", "grass", "rocks", "snow"],
-        in_place=True,
-    )
 
     # Figure
     # ======
