@@ -8,6 +8,7 @@ import pandas as pd
 import pyproj
 import rasterio.features
 import rioxarray as rioxr
+from geemap import shp_to_gdf
 from pysheds.grid import Grid
 from pysheds.view import Raster, ViewFinder
 from rioxarray import merge
@@ -15,46 +16,66 @@ from shapely.geometry import MultiPolygon, shape
 
 
 # =====================================
-#       DEM raster processings
+#       General functions
 # =====================================
-def merge_rioxr_dem_from_df(
-    df: pd.DataFrame = None,
-    mnt_dir: str = None,
-    col_name: str = "NOM_DALLE",
-    epsg: str = "EPSG:2154",
-):
+def merge_rioxr(mnt_list: Union[list, str] = None, epsg: str = None, save: str = None):
     """
-    Merge rasters list from a dataframe.
-    Usefull with IGN dataframes built to list tiles of different sites
+    Merge rasters with rioxarray
 
-    :param df: pandas dataframe containing list of tiles to merge
-    :param mnt_dir: directory where the tiles are stored
-    :param col_name: Name of the dataframe columns containing the tiles names
-    :param epsg: EPSG code to project the tiles to before merging.
-                 The original files must be in this system. No projection are done
+    :param mnt_list: List of files to merge.
+    :param epsg: EPSG code to project the tiles to before merging in case the file
+                 format do not contain this information. It must be the same for
+                 all files.
     :return: A rioxarray rasters of the merged tiles
     """
     rasters = []
-    if mnt_dir is None:
-        mnt_root_dir = "./"
-    else:
-        mnt_root_dir = mnt_dir
 
-    for index, row in df.iterrows():
-        rst = rioxr.open_rasterio(
-            os.path.join(mnt_root_dir, row[col_name] + ".asc"),
-            mask_and_scale=True,
-        )
-        rst.rio.write_crs(epsg, inplace=True)
+    if isinstance(mnt_list, str):
+        mnt_list = [mnt_list]
+
+    for mnt in mnt_list:
+        rst = rioxr.open_rasterio(mnt, mask_and_scale=True)
+        if epsg is not None:
+            rst = rst.rio.write_crs(epsg)
         rasters.append(rst)
 
-    return merge.merge_arrays(rasters)
+    if len(rasters) == 1:
+        return rasters[0]
+
+    merged_raster = merge.merge_arrays(rasters)
+
+    if save is not None:
+        merged_raster.rio.to_raster(save)
+
+    return merged_raster
+
+
+def shape_to_gdf(site_and_shapes, crs=None):
+    """
+    Transform dask outputs of run_pyshed to a GeoDataframe containing
+    the list of sites/lakes with their shed geometry
+
+    :param site_and_shapes: Output of run_pyshed, containing the site
+                            and shed geometry
+    :param crs: crs code to set on GeoDataFrame
+
+    :return: GeoDataframe containing name and geometry shade
+    """
+
+    gdf_bv = gpd.GeoDataFrame(
+        {"Lake": site_and_shapes[:, 0]}, geometry=site_and_shapes[:, 1]
+    )
+
+    if crs is not None:
+        gdf_bv.set_crs(crs, inplace=True)
+
+    return gdf_bv
 
 
 # =====================================
 #       pyshed function shortcut
 # =====================================
-def array_to_raster_shed(array: np.array, raster_like: Raster) -> Raster:
+def raster_shed_from_array(array: np.array, raster_like: Raster) -> Raster:
     """
     Transform a numpy array to a Raster object with the same p
     arameters as Raster_like input
@@ -74,7 +95,7 @@ def array_to_raster_shed(array: np.array, raster_like: Raster) -> Raster:
     )
 
 
-def rioxr_to_raster_shed(raster_rioxr: rioxr.raster_array, band=0) -> Raster:
+def raster_shed_from_rioxr(raster_rioxr: rioxr.raster_array, band=0) -> Raster:
     """
     Transform a rioxarray object to a Raster object of Pyshed module
 
@@ -125,11 +146,12 @@ def raster_shed_processing(raster_shed: Raster):
 
     # flats
     inflated_dem = grid.resolve_flats(flooded_dem)
+    flats = grid.detect_flats(flooded_dem)
 
     # Flow and accumulation
     fdir = grid.flowdir(inflated_dem)
 
-    return dem, grid, fdir
+    return dem, grid, fdir, flats
 
 
 def get_catchment(
@@ -152,12 +174,12 @@ def get_catchment(
     acc = grid.accumulation(fdir)
 
     # Snap pour point to high accumulation cell
-    x_snap, y_snap = grid.snap_to_mask(acc > 1000, (x, y))
+    x_snap, y_snap = grid.snap_to_mask(acc > 100000, (x, y))
 
     # Catchment
     catch = grid.catchment(x=x_snap, y=y_snap, fdir=fdir, xytype="coordinate")
 
-    return catch
+    return [catch, x_snap, y_snap]
 
 
 def catch_to_shape(
@@ -193,67 +215,122 @@ def catch_to_shape(
     return my_shape
 
 
-def shape_to_gdf(shapes_and_sites, crs=None):
-    """
-    Transform dask outputs of run_pyshed to GeoDataframe
-
-    :param shapes_and_sites: output of run_pyshed
-    :param crs: crs code to set on GeoDataFrame
-    :return: GeoDataframe containing name and geometry shade
-
-    """
-    shps, sites = (
-        np.array(shapes_and_sites[0])[:, 0],
-        np.array(shapes_and_sites[0])[:, 1],
-    )
-
-    gdf_bv = gpd.GeoDataFrame({"Lac": sites}, geometry=shps)
-
-    if crs is not None:
-        gdf_bv.set_crs(crs, inplace=True)
-
-    return gdf_bv
-
-
 @dask.delayed
 def run_pyshed(
-    df,
-    my_site,
-    mnt_dir: str = None,
-    col_name_site: str = "Lac",
-    col_name_mnt: str = "NOM_DALLE",
-    col_name_x: str = "X",
-    col_name_y: str = "Y",
-    epsg_mnt="EPSG:2154",
-    epsg_sites="EPSG:27572",
+    name: str,
+    mnt: Union[str, list, pd.DataFrame],
+    xy_outlet: list = None,
+    df_metadata: dict = None,
+    epsg_mnt: str = None,
+    epsg_outlet: str = None,
+    save_mnt_dir: str = None,
+    dem_lake_flattening: bool = True,
+    flattening_threshold: int = 1,
 ):
-    # Select site rows in the dataframe
-    df_site = df.loc[df[col_name_site] == my_site]
-    dem_rioxr = merge_rioxr_dem_from_df(
-        df_site, mnt_dir=mnt_dir, col_name=col_name_mnt, epsg=epsg_mnt
-    )
+    # Create name of merged MNT if needed
+    # ===================================
+    if save_mnt_dir is not None:
+        save_mnt_name = os.path.join(save_mnt_dir, f"{name}_merged.tif")
+    else:
+        save_mnt_name = None
+
+    # Select /create mnt raster
+    # =========================
+    if isinstance(mnt, str) or isinstance(mnt, list):
+        try:
+            dem_rioxr = merge_rioxr(mnt, epsg=epsg_mnt, save=save_mnt_name)
+        except Exception as e:
+            print(e)
+
+    elif isinstance(mnt, pd.DataFrame):
+        metadata_col = [
+            "col_name_dir",
+            "col_name_tile",
+            "col_name_x_outlet",
+            "col_name_y_outlet",
+            "tile_extension",
+        ]
+        if df_metadata is None:
+            df_metadata = dict(
+                col_name_dir="DIR_DALLE",
+                col_name_tile="NOM_DALLE",
+                col_name_x_outlet="X",
+                col_name_y_outlet="Y",
+                tile_extension=".asc",
+            )
+
+        if not all(pd.Series(df_metadata.keys()).isin(metadata_col)):
+            raise IOError(
+                f"df_metadata must contains the following keys: {metadata_col}"
+            )
+
+        for key, item in df_metadata.items():
+            if key.startswith("col"):
+                if not any(mnt.columns.isin([item])):
+                    raise IOError(f"mnt dataframe column '{item}' not found")
+
+        # Get list of tiles within dataframe
+        list_mnt = [
+            os.path.join(dir_tile, name_tile)
+            for dir_tile, name_tile in zip(
+                mnt[df_metadata["col_name_dir"]],
+                mnt[df_metadata["col_name_tile"]] + df_metadata["tile_extension"],
+            )
+        ]
+
+        # Merge the list of files
+        dem_rioxr = merge_rioxr(list_mnt, epsg=epsg_mnt, save=save_mnt_name)
+
+    # Get coordinates of the outlet
+    # =============================
+    if epsg_outlet is None:  # make sure epsg are the same between mnt and outlet
+        print(
+            Warning(f"EPSG_SHED is not set, it will be assumed to be equal to EPSG_MNT")
+        )
+        epsg_outlet = epsg_mnt
+
+    if xy_outlet is None:
+        xy_outlet = (
+            gpd.GeoSeries.from_xy(
+                mnt[df_metadata["col_name_x_outlet"]],
+                mnt[df_metadata["col_name_y_outlet"]],
+                crs=epsg_outlet,
+            )
+            .to_crs(epsg_mnt)
+            .get_coordinates()
+        )
+        xy_outlet = [xy_outlet["x"].values[0], xy_outlet["y"].values[0]]
+
+    # Ensure that altitude of lake around outlet points are the same
+    # Ensure flats to be real flats for shed delimitation
+    # Use a threshold to flatten data points
+    # ===============================================================
+    if dem_lake_flattening:
+        alt_lake = dem_rioxr.sel(
+            x=xy_outlet[0],
+            y=xy_outlet[1],
+            method="nearest",
+        ).values[0]
+
+        dem_rioxr = dem_rioxr.where(
+            (dem_rioxr.data < alt_lake - flattening_threshold)
+            | (dem_rioxr.data > alt_lake + flattening_threshold),
+            other=alt_lake,
+        )
 
     # Create the pyshed Raster Object from rioxarray dem
-    raster_shed = rioxr_to_raster_shed(raster_rioxr=dem_rioxr)
+    # ==================================================
+    raster_shed = raster_shed_from_rioxr(raster_rioxr=dem_rioxr)
 
     # Process the Raster object
-    dem, grid, fdir = raster_shed_processing(raster_shed=raster_shed)
-
-    # Make sure coordinates are aligned between MNT and sites df
-    sites_coords = (
-        gpd.GeoSeries.from_xy(
-            df_site[col_name_x],
-            df_site[col_name_y],
-            crs=epsg_sites,
-        )
-        .to_crs(epsg_mnt)
-        .get_coordinates()
-    )
+    # =========================
+    dem, grid, fdir, flats = raster_shed_processing(raster_shed=raster_shed)
 
     # Get the catchment
-    catch = get_catchment(
-        x=sites_coords["x"].values[0],
-        y=sites_coords["y"].values[0],
+    # =================
+    catch, x_snap, y_snap = get_catchment(
+        x=xy_outlet[0],
+        y=xy_outlet[1],
         grid=grid,
         fdir=fdir,
     )
@@ -261,4 +338,14 @@ def run_pyshed(
     # Transform catchment to shape
     shp_polygon = catch_to_shape(grid=grid, catch=catch, as_polygon=True)
 
-    return [shp_polygon, my_site]
+    return gpd.GeoDataFrame(
+        {
+            "Name": [name],
+            "X outlet": [xy_outlet[0]],
+            "Y outlet": [xy_outlet[1]],
+            "X snap": x_snap,
+            "Y snap": y_snap,
+        },
+        geometry=[shp_polygon],
+        crs=epsg_mnt,
+    )  # Data and geom as list not to provide an index

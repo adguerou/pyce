@@ -26,6 +26,20 @@ def concat(list_shapes: list[str], ignore_index: bool = True):
     return gdf_years
 
 
+def df_to_gdf(df: pd.DataFrame, x_col: str, y_col: str, crs: str):
+    """
+    Transform a dataframe containing x and y coordinates to a GeoDataFrame with points geometry
+    :param df: dataframe
+    :param x_col: x column name
+    :param y_col: y column name
+    :param crs: crs projection
+    :return: geodataframe
+    """
+    return gpd.GeoDataFrame(
+        df, geometry=gpd.points_from_xy(df[x_col], df[y_col])
+    ).set_crs(crs)
+
+
 def str_to_datetime(df: Union[pd.DataFrame, gpd.GeoDataFrame], column="datetime"):
     df[column] = pd.to_datetime(df[column])
 
