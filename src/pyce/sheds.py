@@ -8,11 +8,10 @@ import pandas as pd
 import pyproj
 import rasterio.features
 import rioxarray as rioxr
-from geemap import shp_to_gdf
 from pysheds.grid import Grid
 from pysheds.view import Raster, ViewFinder
 from rioxarray import merge
-from shapely.geometry import MultiPolygon, shape
+from shapely.geometry import MultiPolygon, Point, Polygon, shape
 
 
 # =====================================
@@ -179,26 +178,26 @@ def get_catchment(
     # Catchment
     catch = grid.catchment(x=x_snap, y=y_snap, fdir=fdir, xytype="coordinate")
 
-    return [catch, x_snap, y_snap]
+    return [catch, x_snap, y_snap, acc]
 
 
-def catch_to_shape(
-    grid: Grid, catch: Raster, as_polygon=True
+def raster_shed_to_shape(
+    grid: Grid, raster: Raster, as_polygon=True, dtype: type = np.uint8
 ) -> Union[rasterio.features.shapes, shape]:
     """
     Transform catchment from Pyshed to a Multipolygon shape
     :param grid: Grid object from pyshed
-    :param catch: Catchment object from pyshed
+    :param raster: Raster object from pyshed
     :param as_polygon: Default True, return a Mulipolygon from shape,
            If False, return a list of tuple (geojson dict, value)
     :return: A shape Mulipolygon, except if 'as_polygon' is False
              then return a list of tuple (geojson dict, value)
     """
     # Clip to catchment
-    grid.clip_to(catch)
+    grid.clip_to(raster)
 
     # Create view
-    catch_view = grid.view(catch, dtype=np.uint8)
+    catch_view = grid.view(raster, dtype=dtype)
 
     # Create a vector representation of the catchment mask
     # It is a list of tuple (geojson dict, value)
@@ -242,6 +241,7 @@ def run_pyshed(
         except Exception as e:
             print(e)
 
+    # dataframe
     elif isinstance(mnt, pd.DataFrame):
         metadata_col = [
             "col_name_dir",
@@ -258,7 +258,7 @@ def run_pyshed(
                 col_name_y_outlet="Y",
                 tile_extension=".asc",
             )
-
+        # Check validity of dataframe columns vs metadata
         if not all(pd.Series(df_metadata.keys()).isin(metadata_col)):
             raise IOError(
                 f"df_metadata must contains the following keys: {metadata_col}"
@@ -302,21 +302,20 @@ def run_pyshed(
         xy_outlet = [xy_outlet["x"].values[0], xy_outlet["y"].values[0]]
 
     # Ensure that altitude of lake around outlet points are the same
-    # Ensure flats to be real flats for shed delimitation
-    # Use a threshold to flatten data points
+    # This aims flats to be real flats for shed delimitation
+    # Use a height threshold to flatten data points
     # ===============================================================
     if dem_lake_flattening:
-        alt_lake = dem_rioxr.sel(
+        altitude_lake = dem_rioxr.sel(
             x=xy_outlet[0],
             y=xy_outlet[1],
             method="nearest",
         ).values[0]
 
-        dem_rioxr = dem_rioxr.where(
-            (dem_rioxr.data < alt_lake - flattening_threshold)
-            | (dem_rioxr.data > alt_lake + flattening_threshold),
-            other=alt_lake,
+        lake_sel = (dem_rioxr.data > altitude_lake - flattening_threshold) & (
+            dem_rioxr.data < altitude_lake + flattening_threshold
         )
+        dem_rioxr = dem_rioxr.where(~lake_sel, other=dem_rioxr.where(lake_sel).min())
 
     # Create the pyshed Raster Object from rioxarray dem
     # ==================================================
@@ -328,17 +327,65 @@ def run_pyshed(
 
     # Get the catchment
     # =================
-    catch, x_snap, y_snap = get_catchment(
+    catch, x_snap, y_snap, acc = get_catchment(
         x=xy_outlet[0],
         y=xy_outlet[1],
         grid=grid,
         fdir=fdir,
     )
 
-    # Transform catchment to shape
-    shp_polygon = catch_to_shape(grid=grid, catch=catch, as_polygon=True)
+    # Transform catchment to shape - take exterior
+    catch_geom = raster_shed_to_shape(grid=grid, raster=catch, as_polygon=True)
+    # catch_geom = Polygon(catch_geom.exterior)
 
-    return gpd.GeoDataFrame(
+    # Get lake shape from the dem flattening + clip out lake from shed
+    # ================================================================
+    if dem_lake_flattening:
+        # Select lake rioxr and transform to pyshed raster
+        lake = raster_shed_from_rioxr(dem_rioxr.where(lake_sel))
+
+        # Create a shape format
+        lake_geoms = raster_shed_to_shape(
+            grid=grid, raster=lake, as_polygon=True, dtype=np.float32
+        )
+
+        # Explode all geometries
+        lake_geoms = gpd.GeoDataFrame(
+            {"lake": [name]}, geometry=[lake_geoms], crs=epsg_mnt
+        ).explode(index_parts=False)
+
+        # Select the one containing the outlet and keep only exterior
+        lake_geom = lake_geoms[lake_geoms.contains(Point(xy_outlet))]
+        the_lake = Polygon(lake_geom.geometry.exterior.iloc[0])
+
+        # Create lake dataframe
+        gdf_lake = gpd.GeoDataFrame(
+            {
+                "Name": [name],
+                "X outlet": [xy_outlet[0]],
+                "Y outlet": [xy_outlet[1]],
+            },
+            geometry=[the_lake],
+            crs=epsg_mnt,
+        )
+        catch_geom = catch_geom.difference(gdf_lake.geometry).geometry.iloc[0]
+
+    else:
+        # Create lake dataframe with empty geometry
+        gdf_lake = gpd.GeoDataFrame(
+            {
+                "Name": [name],
+                "X outlet": [xy_outlet[0]],
+                "Y outlet": [xy_outlet[1]],
+            },
+            geometry=[None],
+            crs=epsg_mnt,
+        )
+
+    # Get BV shape of the shed with coordinates of the outlet
+    # ========================================================
+
+    gdf_shed = gpd.GeoDataFrame(
         {
             "Name": [name],
             "X outlet": [xy_outlet[0]],
@@ -346,6 +393,8 @@ def run_pyshed(
             "X snap": x_snap,
             "Y snap": y_snap,
         },
-        geometry=[shp_polygon],
+        geometry=[catch_geom],
         crs=epsg_mnt,
     )  # Data and geom as list not to provide an index
+
+    return gdf_shed, gdf_lake
