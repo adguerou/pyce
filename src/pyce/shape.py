@@ -4,6 +4,10 @@ from typing import Union
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import shapely
+from shapely.geometry.base import BaseGeometry
+from shapely.geometry.multipolygon import MultiPolygon
+from shapely.geometry.polygon import Polygon
 
 from pyce.tools.lc_mapping import LandCoverMap, oso_mapping_fusion_in_df
 
@@ -108,6 +112,29 @@ def select_overlapping_shapes(
             gdf1_overlap.to_file(save_name)
 
     return gdf1_overlap
+
+
+def remove_interiors_geom(
+    geom: Union[BaseGeometry, gpd.GeoDataFrame],
+    selection: Union[str, BaseGeometry] = "area",
+):
+    if isinstance(geom, Polygon):
+        return Polygon(geom.exterior)
+
+    if not isinstance(geom, MultiPolygon):
+        raise ValueError(f"'geom' must be Multi or single Polygon, got {type(geom)}")
+    else:
+        list_poly = list(geom.geoms)
+
+        if selection == "area":
+            list_areas = [p.area for p in list_poly]
+            poly_sel = np.array(list_poly)[list_areas == np.max(list_areas)][0]
+            return Polygon(poly_sel.exterior)
+
+        elif isinstance(selection, BaseGeometry):
+            sel = [shapely.contains(p, selection) for p in list_poly]
+            poly_sel = np.array(list_poly)[sel][0]
+            return Polygon(poly_sel.exterior)
 
 
 def rename_lcmap_df_col(
