@@ -6,12 +6,16 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pyproj
-import rasterio.features
 import rioxarray as rioxr
+import shapely
+import xarray as xr
 from pysheds.grid import Grid
 from pysheds.view import Raster, ViewFinder
 from rioxarray import merge
 from shapely.geometry import MultiPolygon, Point, Polygon, shape
+from shapely.geometry.base import BaseGeometry
+
+from pyce import shape as pyshape
 
 
 # =====================================
@@ -181,16 +185,16 @@ def get_catchment(
     return [catch, x_snap, y_snap, acc]
 
 
-def raster_shed_to_shape(
-    grid: Grid, raster: Raster, as_polygon=True, dtype: type = np.uint8
-) -> Union[rasterio.features.shapes, shape]:
+def raster_shed_to_geom(
+    grid: Grid, raster: Raster, as_geom=True, dtype: type = np.uint8
+) -> Union[tuple[dict, float], BaseGeometry]:
     """
     Transform catchment from Pyshed to a Multipolygon shape
     :param grid: Grid object from pyshed
     :param raster: Raster object from pyshed
-    :param as_polygon: Default True, return a Mulipolygon from shape,
+    :param as_geom: Default True, return a BaseGeometry,
            If False, return a list of tuple (geojson dict, value)
-    :return: A shape Mulipolygon, except if 'as_polygon' is False
+    :return: BaseGeometry, except if 'as_polygon' is False
              then return a list of tuple (geojson dict, value)
     """
     # Clip to catchment
@@ -201,17 +205,34 @@ def raster_shed_to_shape(
 
     # Create a vector representation of the catchment mask
     # It is a list of tuple (geojson dict, value)
-    my_shape = [*grid.polygonize(catch_view)]
+    geom = [*grid.polygonize(catch_view)]
 
     # Transform geojson dict to shapely Polygon/Multipolygon
-    if as_polygon:
-        polys = list(map(lambda x: x[0], my_shape))
+    if as_geom:
+        polys = list(map(lambda x: x[0], geom))
         if len(polys) > 1:
-            my_shape = MultiPolygon([shape(p) for p in polys])
+            geom = MultiPolygon([shape(p) for p in polys])
         else:
-            my_shape = shape(polys[0])
+            geom = shape(polys[0])
 
-    return my_shape
+    return geom
+
+
+def raster_shed_to_rioxr(raster: Raster, crs=None, dtype="float32") -> xr.DataArray:
+    return (
+        xr.DataArray(
+            raster,
+            dims=["y", "x"],
+            coords={
+                "y": raster.coords[:, 0].reshape(raster.shape)[:, 0],
+                "x": raster.coords[:, 1].reshape(raster.shape)[0],
+            },
+        )
+        .astype(dtype)
+        .rio.write_nodata(raster.nodata)
+        .rio.write_transform(raster.affine)
+        .rio.write_crs(crs)
+    )
 
 
 @dask.delayed
@@ -334,9 +355,25 @@ def run_pyshed(
         fdir=fdir,
     )
 
-    # Transform catchment to shape - take exterior
-    catch_geom = raster_shed_to_shape(grid=grid, raster=catch, as_polygon=True)
-    # catch_geom = Polygon(catch_geom.exterior)
+    return grid, acc
+    # Get gdf of the shed with coordinates of the outlet
+    # ==================================================
+    # Transform catchment to shape + clean interiors
+    catch_geom = raster_shed_to_geom(grid=grid, raster=catch)
+    catch_geom_filled = pyshape.remove_interiors_geom(catch_geom, selection="area")
+
+    # Create gdf
+    gdf_shed = gpd.GeoDataFrame(
+        {
+            "Name": [name],
+            "X outlet": [xy_outlet[0]],
+            "Y outlet": [xy_outlet[1]],
+            "X snap": x_snap,
+            "Y snap": y_snap,
+        },
+        geometry=[catch_geom_filled],
+        crs=epsg_mnt,
+    )  # Data and geom as list not to provide an index
 
     # Get lake shape from the dem flattening + clip out lake from shed
     # ================================================================
@@ -345,18 +382,10 @@ def run_pyshed(
         lake = raster_shed_from_rioxr(dem_rioxr.where(lake_sel))
 
         # Create a shape format
-        lake_geoms = raster_shed_to_shape(
-            grid=grid, raster=lake, as_polygon=True, dtype=np.float32
+        lake_geoms = raster_shed_to_geom(grid=grid, raster=lake, dtype=np.float32)
+        lake_geom_filled = pyshape.remove_interiors_geom(
+            lake_geoms, selection=Point(xy_outlet)
         )
-
-        # Explode all geometries
-        lake_geoms = gpd.GeoDataFrame(
-            {"lake": [name]}, geometry=[lake_geoms], crs=epsg_mnt
-        ).explode(index_parts=False)
-
-        # Select the one containing the outlet and keep only exterior
-        lake_geom = lake_geoms[lake_geoms.contains(Point(xy_outlet))]
-        the_lake = Polygon(lake_geom.geometry.exterior.iloc[0])
 
         # Create lake dataframe
         gdf_lake = gpd.GeoDataFrame(
@@ -365,10 +394,10 @@ def run_pyshed(
                 "X outlet": [xy_outlet[0]],
                 "Y outlet": [xy_outlet[1]],
             },
-            geometry=[the_lake],
+            geometry=[lake_geom_filled],
             crs=epsg_mnt,
         )
-        catch_geom = catch_geom.difference(gdf_lake.geometry).geometry.iloc[0]
+        gdf_shed["geometry"] = shapely.difference(catch_geom_filled, lake_geom_filled)
 
     else:
         # Create lake dataframe with empty geometry
@@ -381,20 +410,5 @@ def run_pyshed(
             geometry=[None],
             crs=epsg_mnt,
         )
-
-    # Get BV shape of the shed with coordinates of the outlet
-    # ========================================================
-
-    gdf_shed = gpd.GeoDataFrame(
-        {
-            "Name": [name],
-            "X outlet": [xy_outlet[0]],
-            "Y outlet": [xy_outlet[1]],
-            "X snap": x_snap,
-            "Y snap": y_snap,
-        },
-        geometry=[catch_geom],
-        crs=epsg_mnt,
-    )  # Data and geom as list not to provide an index
 
     return gdf_shed, gdf_lake
