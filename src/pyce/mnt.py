@@ -4,7 +4,7 @@
 
 import glob
 import os
-from typing import List, Union
+from typing import Union
 
 import dask
 import geopandas as gpd
