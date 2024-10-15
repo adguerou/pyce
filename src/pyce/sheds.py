@@ -355,7 +355,6 @@ def run_pyshed(
         fdir=fdir,
     )
 
-    return grid, acc
     # Get gdf of the shed with coordinates of the outlet
     # ==================================================
     # Transform catchment to shape + clean interiors
