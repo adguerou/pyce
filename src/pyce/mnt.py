@@ -283,43 +283,6 @@ def _get_lidar_basename(file: str):
     return os.path.splitext(os.path.splitext(os.path.basename(file))[0])[0]
 
 
-@dask.delayed
-def _pdal_raster_tin(
-    file,
-    resolution=0.5,
-    save_dir=None,
-    save_extension=None,
-    qgis_dir="/home/aguerou/miniconda3/envs/py311/lib/qgis/",
-):
-    """
-    Dask function to compute DEM tile from lidarHD data.
-    It runs the QGIS function 'pdal_wrench to_raster_tin' that is the function
-    used in QGIS 3.34 version for 'Export to raster (using triangulation)' function
-    in the toolbox
-
-    :param file: Absolute path of the lidarHD tiles to process
-    :param resolution: Resolution of the output DEM file, in meter
-    :param save_dir: Directory where to save the DEM file
-    :param save_extension: Extension of the DEM file
-    :param qgis_dir: Directory where the function 'pdal_wrench to_raster_tin'
-                     is installed
-    """
-    file_name = _get_lidar_basename(file)
-    save_name = _save_name(dir=save_dir, file_name=file_name, extension=save_extension)
-
-    # Compute DEM from lidar "ground" points (Classif=2) / for IGN
-    pdal_cmd = f"{qgis_dir}/pdal_wrench to_raster_tin\
-    --input={file}\
-    --output={save_name}\
-    --resolution={resolution}\
-    --tile-size=1000\
-    --filter='Classification == 2'\
-    --threads=20"
-
-    # Execute command in OS
-    os.system(pdal_cmd)
-
-
 def process_lidarhd_tiles(
     files_list, save_dir, resolution=1, save_extension=".tif", num_workers=3, redo=False
 ):
@@ -369,3 +332,118 @@ def process_lidarhd_tiles(
 
     # Compute the MNT tiles
     mnt = dask.compute(results, num_workers=num_workers)
+
+
+def merge_lidarhd_tiles(
+    file_list: list = None,
+    save_dir: str = None,
+    filter: str = "'Classification == 2'",
+    compute=True,
+    qgis_dir="/home/aguerou/miniconda3/envs/py311/lib/qgis",
+):
+    """
+    Merge two or more classified lidar tiles to a single one in .laz format.
+
+    It runs the QGIS function 'pdal_wrench merge' that is the function used
+    in QGIS 3.34 version for 'merge' function of the 'Point Cloud data management'
+    section of the toolbox
+
+    :param file_list: List of lidar tiles to merge. They must be lidar format (.copc.laz)
+    :param save_dir: Directory where to seave the merged file
+    :param filter: Expression used to filter input lidar data before the merge. Used to select ground, vegetation, etc.
+                   Default: "Classification == 2" to select only the ground points.
+    :param compute: If False, return only the name of the merged file without conputing the merge. Default = True
+    :param qgis_dir: Directory where the function 'pdal_wrench merge' is installed
+
+    :return: Full path of the merged file.
+             The name of the merged file is constructed automatically as follow: it gets the second tiles number of
+             each file and concatenate them into one single file name using the first file name as a base.
+             Exemple: files_list = ["LHD_FXX_0985_6480_PTS_O_LAMB93_IGN69",
+                                    "LHD_FXX_0985_6481_PTS_O_LAMB93_IGN69"]
+                    -> out_name = "LHD_FXX_0985_6480_6481_PTS_O_LAMB93_IGN69"
+
+    """
+    # Create automatically the name of the merged file
+    # It gets the second tiles number of each file and concatenate them in one single file name
+    # Exemple: files_list = ["LHD_FXX_0985_6480_PTS_O_LAMB93_IGN69",
+    #                        "LHD_FXX_0985_6481_PTS_O_LAMB93_IGN69"]
+    #                        -> out_name = "LHD_FXX_0985_6480_6481_PTS_O_LAMB93_IGN69"
+    # =======================================================================================
+    # Get first file name in a list, with first item being the 4 first group linked with _
+    out_name_base_split = _get_lidar_basename(file_list[0]).rsplit("_", 4)
+
+    # Get extensions number of all other files
+    extra_names = [_get_lidar_basename(file).split("_")[3] for file in file_list[1:]]
+
+    # Add extension to first item of the list, joining them with "_"
+    out_name_base_split[0] += "_" + "_".join(extra_names)
+
+    # Concatenate back the first file name list joining each group with "_"
+    out_name = "_".join(out_name_base_split)
+
+    # Create save_name
+    save_name = _save_name(dir=save_dir, file_name=out_name, extension=".laz")
+
+    # Create tmp text containing the file list
+    # ========================================
+    input_file_list = os.path.join(save_dir, "merge_list_tmp.txt")
+    tmp_file = open(input_file_list, "w")
+
+    for i in range(len(file_list)):
+        tmp_file.write(file_list[i])
+        tmp_file.write("\n")
+
+    tmp_file.close()
+
+    # Compute DEM from lidar "ground" points (Classif=2) / for IGN
+    # ============================================================
+    pdal_cmd = f"{qgis_dir}/pdal_wrench merge\
+    --input-file-list={input_file_list}\
+    --output={save_name}\
+    --filter={filter}\
+    --threads=20"
+
+    # Execute command in OS + remove tmp file
+    if compute:
+        os.system(pdal_cmd)
+    os.system(f"rm {input_file_list} -f")
+
+    return save_name
+
+
+@dask.delayed
+def _pdal_raster_tin(
+    file,
+    resolution=0.5,
+    save_dir=None,
+    save_extension=None,
+    filter: str = "'Classification == 2'",
+    qgis_dir="/home/aguerou/miniconda3/envs/py311/lib/qgis",
+):
+    """
+    Dask function to compute DEM tile from lidarHD data.
+    It runs the QGIS function 'pdal_wrench to_raster_tin' that is the function
+    used in QGIS 3.34 version for 'Export to raster (using triangulation)' function
+    in the toolbox
+
+    :param file: Absolute path of the lidarHD tiles to process
+    :param resolution: Resolution of the output DEM file, in meter
+    :param save_dir: Directory where to save the DEM file
+    :param save_extension: Extension of the DEM file
+    :param qgis_dir: Directory where the function 'pdal_wrench to_raster_tin'
+                     is installed
+    """
+    file_name = _get_lidar_basename(file)
+    save_name = _save_name(dir=save_dir, file_name=file_name, extension=save_extension)
+
+    # Compute DEM from lidar "ground" points (Classif=2) / for IGN
+    pdal_cmd = f"{qgis_dir}/pdal_wrench to_raster_tin\
+    --input={file}\
+    --output={save_name}\
+    --resolution={resolution}\
+    --tile-size=1000\
+    --filter={filter}\
+    --threads=20"
+
+    # Execute command in OS
+    os.system(pdal_cmd)
