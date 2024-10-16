@@ -116,25 +116,62 @@ def select_overlapping_shapes(
 
 def remove_interiors_geom(
     geom: Union[BaseGeometry, gpd.GeoDataFrame],
-    selection: Union[str, BaseGeometry] = "area",
+    buffer_size: int = 10,
+    buffer_delta: int = 0,
 ):
+    # Test types
     if isinstance(geom, Polygon):
         return Polygon(geom.exterior)
-
     if not isinstance(geom, MultiPolygon):
         raise ValueError(f"'geom' must be Multi or single Polygon, got {type(geom)}")
+
+    # Create a buffered geometry + merged
+    geom_buff_merged = shapely.unary_union(geom.buffer(buffer_size))
+
+    # Depending on the resulting merge, need to split Multigeometry
+    if isinstance(geom_buff_merged, MultiPolygon):
+        list_geom_buff = list(geom_buff_merged.geoms)
     else:
-        list_poly = list(geom.geoms)
+        list_geom_buff = [geom_buff_merged]
 
-        if selection == "area":
-            list_areas = [p.area for p in list_poly]
-            poly_sel = np.array(list_poly)[list_areas == np.max(list_areas)][0]
-            return Polygon(poly_sel.exterior)
+    # Take the exterior of each single buffered geometry
+    list_geom_buff_ext = [Polygon(g.exterior) for g in list_geom_buff]
 
-        elif isinstance(selection, BaseGeometry):
-            sel = [shapely.contains(p, selection) for p in list_poly]
-            poly_sel = np.array(list_poly)[sel][0]
-            return Polygon(poly_sel.exterior)
+    # Buffered back the filled geometries
+    # Some complications needed to get a simple list of Polygons / buffer negative
+    # values can lead to Multipolygon type whereas got Polygon as input
+    list_geom_ext = []
+    for g_buff_ext in list_geom_buff_ext:
+        g_ext = g_buff_ext.buffer(-buffer_size - buffer_delta)
+
+        if isinstance(g_ext, MultiPolygon):
+            g_multi = list(g_ext.geoms)
+            for g in g_multi:
+                list_geom_ext.append(g)
+        else:
+            list_geom_ext.append(g_ext)
+
+    return MultiPolygon(list_geom_ext)
+
+
+def select_poly_from_multipoly(poly, selection: Union[str, BaseGeometry] = "area"):
+    if isinstance(poly, Polygon):
+        return poly
+
+    if not isinstance(poly, MultiPolygon):
+        raise ValueError(f"'geom' must be MultiPolygon, got {type(poly)}")
+
+    list_poly = list(poly.geoms)
+
+    if selection == "area":
+        list_areas = [p.area for p in list_poly]
+        poly_sel = np.array(list_poly)[list_areas == np.max(list_areas)][0]
+        return poly_sel
+
+    elif isinstance(selection, BaseGeometry):
+        sel = [shapely.contains(p, selection) for p in list_poly]
+        poly_sel = np.array(list_poly)[sel][0]
+        return poly_sel
 
 
 def rename_lcmap_df_col(

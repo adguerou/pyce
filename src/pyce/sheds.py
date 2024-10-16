@@ -21,7 +21,9 @@ from pyce import shape as pyshape
 # =====================================
 #       General functions
 # =====================================
-def merge_rioxr(mnt_list: Union[list, str] = None, epsg: str = None, save: str = None):
+def merge_rioxr(
+    mnt_list: Union[list, str] = None, epsg: str = None, save_name: str = None
+):
     """
     Merge rasters with rioxarray
 
@@ -29,6 +31,8 @@ def merge_rioxr(mnt_list: Union[list, str] = None, epsg: str = None, save: str =
     :param epsg: EPSG code to project the tiles to before merging in case the file
                  format do not contain this information. It must be the same for
                  all files.
+    :param save_name: Full path to save merged raster. Default None (no savings)
+
     :return: A rioxarray rasters of the merged tiles
     """
     rasters = []
@@ -47,8 +51,8 @@ def merge_rioxr(mnt_list: Union[list, str] = None, epsg: str = None, save: str =
 
     merged_raster = merge.merge_arrays(rasters)
 
-    if save is not None:
-        merged_raster.rio.to_raster(save)
+    if save_name is not None:
+        merged_raster.rio.to_raster(save_name)
 
     return merged_raster
 
@@ -240,25 +244,19 @@ def run_pyshed(
     name: str,
     mnt: Union[str, list, pd.DataFrame],
     xy_outlet: list = None,
+    xy_center: list = None,
     df_metadata: dict = None,
     epsg_mnt: str = None,
-    epsg_outlet: str = None,
+    epsg_lake: str = None,
     save_mnt_dir: str = None,
     dem_lake_flattening: bool = True,
-    flattening_threshold: int = 1,
+    flattening_threshold: float = 1,
 ):
-    # Create name of merged MNT if needed
-    # ===================================
-    if save_mnt_dir is not None:
-        save_mnt_name = os.path.join(save_mnt_dir, f"{name}_merged.tif")
-    else:
-        save_mnt_name = None
-
     # Select /create mnt raster
     # =========================
     if isinstance(mnt, str) or isinstance(mnt, list):
         try:
-            dem_rioxr = merge_rioxr(mnt, epsg=epsg_mnt, save=save_mnt_name)
+            dem_rioxr = merge_rioxr(mnt, epsg=epsg_mnt)
         except Exception as e:
             print(e)
 
@@ -267,6 +265,8 @@ def run_pyshed(
         metadata_col = [
             "col_name_dir",
             "col_name_tile",
+            "col_name_x_center",
+            "col_name_y_center",
             "col_name_x_outlet",
             "col_name_y_outlet",
             "tile_extension",
@@ -275,6 +275,8 @@ def run_pyshed(
             df_metadata = dict(
                 col_name_dir="DIR_DALLE",
                 col_name_tile="NOM_DALLE",
+                col_name_x_center="XC",
+                col_name_y_center="YC",
                 col_name_x_outlet="X",
                 col_name_y_outlet="Y",
                 tile_extension=".asc",
@@ -300,27 +302,39 @@ def run_pyshed(
         ]
 
         # Merge the list of files
-        dem_rioxr = merge_rioxr(list_mnt, epsg=epsg_mnt, save=save_mnt_name)
+        dem_rioxr = merge_rioxr(list_mnt, epsg=epsg_mnt)
 
-    # Get coordinates of the outlet
-    # =============================
-    if epsg_outlet is None:  # make sure epsg are the same between mnt and outlet
+    # Get coordinates of the outlet and center of lake
+    # ================================================
+    if epsg_lake is None:  # make sure epsg are the same between mnt and outlet
         print(
             Warning(f"EPSG_SHED is not set, it will be assumed to be equal to EPSG_MNT")
         )
-        epsg_outlet = epsg_mnt
+        epsg_lake = epsg_mnt
 
     if xy_outlet is None:
         xy_outlet = (
             gpd.GeoSeries.from_xy(
                 mnt[df_metadata["col_name_x_outlet"]],
                 mnt[df_metadata["col_name_y_outlet"]],
-                crs=epsg_outlet,
+                crs=epsg_lake,
             )
             .to_crs(epsg_mnt)
             .get_coordinates()
         )
         xy_outlet = [xy_outlet["x"].values[0], xy_outlet["y"].values[0]]
+
+    if xy_center is None:
+        xy_center = (
+            gpd.GeoSeries.from_xy(
+                mnt[df_metadata["col_name_x_center"]],
+                mnt[df_metadata["col_name_y_center"]],
+                crs=epsg_lake,
+            )
+            .to_crs(epsg_mnt)
+            .get_coordinates()
+        )
+        xy_center = [xy_center["x"].values[0], xy_center["y"].values[0]]
 
     # Ensure that altitude of lake around outlet points are the same
     # This aims flats to be real flats for shed delimitation
@@ -328,8 +342,8 @@ def run_pyshed(
     # ===============================================================
     if dem_lake_flattening:
         altitude_lake = dem_rioxr.sel(
-            x=xy_outlet[0],
-            y=xy_outlet[1],
+            x=xy_center[0],
+            y=xy_center[1],
             method="nearest",
         ).values[0]
 
@@ -337,6 +351,14 @@ def run_pyshed(
             dem_rioxr.data < altitude_lake + flattening_threshold
         )
         dem_rioxr = dem_rioxr.where(~lake_sel, other=dem_rioxr.where(lake_sel).min())
+
+        return dem_rioxr, lake_sel
+
+    # Save merged/ flattened MNT raster
+    # =================================
+    if save_mnt_dir is not None:
+        save_mnt_name = os.path.join(save_mnt_dir, f"{name}_merged.tif")
+        dem_rioxr.rio.to_raster(save_mnt_name)
 
     # Create the pyshed Raster Object from rioxarray dem
     # ==================================================
@@ -359,7 +381,12 @@ def run_pyshed(
     # ==================================================
     # Transform catchment to shape + clean interiors
     catch_geom = raster_shed_to_geom(grid=grid, raster=catch)
-    catch_geom_filled = pyshape.remove_interiors_geom(catch_geom, selection="area")
+    catch_geom_filled = pyshape.remove_interiors_geom(
+        catch_geom, buffer_size=10, buffer_delta=1
+    )
+    catch_geom_sel = pyshape.select_poly_from_multipoly(
+        catch_geom_filled, selection="area"
+    )
 
     # Create gdf
     gdf_shed = gpd.GeoDataFrame(
@@ -370,7 +397,7 @@ def run_pyshed(
             "X snap": x_snap,
             "Y snap": y_snap,
         },
-        geometry=[catch_geom_filled],
+        geometry=[catch_geom_sel],
         crs=epsg_mnt,
     )  # Data and geom as list not to provide an index
 
@@ -383,8 +410,23 @@ def run_pyshed(
         # Create a shape format
         lake_geoms = raster_shed_to_geom(grid=grid, raster=lake, dtype=np.float32)
         lake_geom_filled = pyshape.remove_interiors_geom(
-            lake_geoms, selection=Point(xy_outlet)
+            lake_geoms, buffer_size=10, buffer_delta=1
         )
+
+        try:
+            lake_geom_sel = pyshape.select_poly_from_multipoly(
+                lake_geom_filled, selection=Point(xy_center)
+            )
+        except:
+            lake_geom_sel = pyshape.select_poly_from_multipoly(
+                lake_geom_filled, selection="area"
+            )
+            print(
+                Warning(
+                    f"{name.upper()}: Lake geometry does not contain the center coordinates. "
+                    f"Return the largest area geometry."
+                )
+            )
 
         # Create lake dataframe
         gdf_lake = gpd.GeoDataFrame(
@@ -393,7 +435,7 @@ def run_pyshed(
                 "X outlet": [xy_outlet[0]],
                 "Y outlet": [xy_outlet[1]],
             },
-            geometry=[lake_geom_filled],
+            geometry=[lake_geom_sel],
             crs=epsg_mnt,
         )
         gdf_shed["geometry"] = shapely.difference(catch_geom_filled, lake_geom_filled)
