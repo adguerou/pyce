@@ -524,3 +524,37 @@ def oso_mapping_fusion_in_df(
     return df.drop(
         labels=[f"LC_{code}" for code in lc_map_from.get_code()[:-1]], axis=1
     )
+
+
+def rename_lcmap_df_col(
+    df: pd.DataFrame,
+    lcmap: LandCoverMap,
+    col: str = "landcover",
+    prefix: bool = True,
+    inplace: bool = False,
+):
+    """
+    Rename the columns of a dataframe that corresponds to LandCoverMap codes.
+    Changes from codes to litteral names.
+
+    :param df: dataframe to renamed the columns from
+    :param lcmap: LandCoverMap that contains the correspondance code<->littereal type
+    :param col: column of the dataframe containing the landcover codes
+    :param inplace: If true, changes directly the dataframe (default FALSE)
+    :return: pd.Dataframe
+    """
+
+    lc_cols = df.columns[df.columns.str.startswith(col)]
+    if len(lc_cols) == 0:
+        raise IOError("No LandCoverMap column found. Check column name")
+
+    if not inplace:
+        df = df.copy()
+
+    if prefix:
+        df[col] = df[col].apply(lambda x: lcmap.get_type_of_code(int(x[-1])))
+    else:
+        df[col] = df[col].apply(lambda x: lcmap.get_type_of_code(x))
+
+    if inplace is False:
+        return df

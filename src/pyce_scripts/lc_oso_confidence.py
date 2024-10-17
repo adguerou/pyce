@@ -8,15 +8,33 @@ import rioxarray as rioxr
 import seaborn as sbn
 import xarray as xr
 from matplotlib import pyplot as plt
-from pyce.shape import get_massif_names
-from pyce.tools.lc_mapping import LandCoverMap
+from pyce.shape import concat, str_to_datetime
+from pyce.tools.lc_mapping import LandCoverMap, oso_mapping_fusion_in_df
+
+
+def fusion_oso_shape(
+    list_shapes: list[str],
+    lc_map_to: LandCoverMap,
+    lc_map_from: LandCoverMap,
+    save: str = None,
+):
+    gdf = concat(list_shapes, ignore_index=False)
+
+    gdf = str_to_datetime(gdf, column="datetime")
+    gdf.set_index("datetime", inplace=True)
+
+    gdf = oso_mapping_fusion_in_df(gdf, lc_map_to=lc_map_to, lc_map_from=lc_map_from)
+
+    if save:
+        gdf.to_file(save)
+
+    return gdf
 
 
 @dask.delayed
 def _dask_confidence_df(
     glacier: gpd.GeoDataFrame, oso_rst: str, oso_conf: str, lcmap: LandCoverMap
 ):
-
     ds = rioxr.open_rasterio(oso_rst, mask_and_scale=True)
     ds_glacier = ds.rio.clip([glacier.geometry], from_disk=True)
 
@@ -26,7 +44,6 @@ def _dask_confidence_df(
     df = pd.DataFrame()
 
     for code in lcmap.get_code():
-
         # Get a DataFrame with the confidence values for each class
         mask = ds_c_glacier.where(ds_glacier == code)
         data = mask.data[0][~np.isnan(mask.data[0])]
@@ -46,7 +63,6 @@ def _dask_confidence_df(
 def get_confidence_df(
     gdf: gpd.GeoDataFrame, oso_rst: str, oso_conf: str, lcmap: LandCoverMap
 ):
-
     result = []
     for glacier in gdf.itertuples():
         result.append(_dask_confidence_df(glacier, oso_rst, oso_conf, lcmap))
@@ -127,9 +143,7 @@ def run_confidence(
     fig_dir="",
     save_name=None,
 ):
-
-    for (yr, index) in zip(years, range(len(years))):
-
+    for yr, index in zip(years, range(len(years))):
         lcmap = LandCoverMap(mapping_files[index], name=mapping_names[index])
         lcmap.reindex(in_place=True)
         lcmap.remove_item(col_name="Code", col_val=[lcmap.mask_val], in_place=True)
@@ -154,12 +168,10 @@ def run_confidence_massif(
     fig_dir="",
     save_name=None,
 ):
-
     list_massif = [str(massif) for massif in gdf["Massif"].dropna().unique()]
     list_massif_save = [str(massif).replace(" ", "_") for massif in list_massif]
 
     for massif, massif_save in zip(list_massif, list_massif_save):
-
         gdf_massif = gdf[gdf["Massif"] == massif]
 
         if save_name is not None:
@@ -182,7 +194,6 @@ def run_confidence_massif(
 
 @dask.delayed(nout=2)
 def _dask_confidence_df_and_mask(glacier, oso_rst, oso_conf, lcmap):
-
     ds = rioxr.open_rasterio(oso_rst, mask_and_scale=True)
     ds_glacier = ds.rio.clip([glacier.geometry], from_disk=True)
 
@@ -193,7 +204,6 @@ def _dask_confidence_df_and_mask(glacier, oso_rst, oso_conf, lcmap):
     df = pd.DataFrame()
 
     for code in lcmap.get_code():
-
         # Get a dataset with each variable the confidence per class
         mask = ds_c_glacier.where(ds_glacier == code)
         ds_mask_tmp = mask.to_dataset(dim="band").rename_vars({1: code})
@@ -231,7 +241,6 @@ def get_confidence_mask(
 
 
 def plot_conf_mask(ds, gdf_outline, code, title="", vmin=None, vmax=None):
-
     ds_glacier = ds.rio.reproject("EPSG:4326", nodata=np.nan)
     gdf = gdf_outline.to_crs(ds_glacier.rio.crs)
 
@@ -278,7 +287,6 @@ def run_conf_mask(
     vmin=None,
     vmax=None,
 ):
-
     list_and_mask = get_confidence_mask(gdf, oso_rst, oso_conf, lcmap)
 
     title = (
