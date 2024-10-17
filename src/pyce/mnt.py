@@ -10,9 +10,11 @@ import dask
 import geopandas as gpd
 import pandas as pd
 import requests
+import richdem as rd
 from IPython.display import display
 
 from pyce import shape as pyshape
+from pyce.raster import merge_raster
 
 
 # ===========================================
@@ -411,6 +413,69 @@ def merge_lidarhd_tiles(
     return save_name
 
 
+def merge_dem_tiles(
+    dem: Union[str, list, pd.DataFrame],
+    df_metadata: dict = None,
+    epsg_mnt: str = None,
+    save_name: str = None,
+):
+    # Check type of input
+    # ===================
+    if isinstance(dem, str) or isinstance(dem, list):
+        try:
+            dem_rioxr = merge_raster(dem, epsg=epsg_mnt)
+            return dem_rioxr
+
+        except Exception as e:
+            print(e)
+    elif not isinstance(dem, pd.DataFrame):
+        raise ValueError(
+            f"'dem' type must be within Union[str, list, pd.DataFrame], got {type(dem)}"
+        )
+
+    # Deal with metadata in case of a dataframe
+    # =========================================
+    metadata_col = ["col_name_dir", "col_name_tile", "tile_extension"]
+
+    # Default
+    if df_metadata is None:
+        df_metadata = dict(
+            col_name_dir="DIR_DALLE",
+            col_name_tile="NOM_DALLE",
+            tile_extension=".asc",
+        )
+
+    # Check validity of metadata name given vs metadata needed
+    if not all(pd.Series(df_metadata.keys()).isin(metadata_col)):
+        raise IOError(f"df_metadata must contains the following keys: {metadata_col}")
+
+    # Check validaity of dataframe columns name
+    for key, item in df_metadata.items():
+        if key.startswith("col"):
+            if not any(dem.columns.isin([item])):
+                raise IOError(f"'dem' dataframe column '{item}' not found")
+
+    # Select mnt raster
+    # =================
+    list_dem = [
+        os.path.join(dir_tile, name_tile)
+        for dir_tile, name_tile in zip(
+            dem[df_metadata["col_name_dir"]],
+            dem[df_metadata["col_name_tile"]] + df_metadata["tile_extension"],
+        )
+    ]
+
+    # Merge the list of files
+    # =======================
+    merged_dem = merge_raster(list_dem, epsg=epsg_mnt)
+
+    # Save file
+    if save_name is not None:
+        merged_dem.rio.to_raster(save_name)
+
+    return merged_dem
+
+
 @dask.delayed
 def _pdal_raster_tin(
     file,
@@ -447,3 +512,26 @@ def _pdal_raster_tin(
 
     # Execute command in OS
     os.system(pdal_cmd)
+
+
+def rd_terrain_slope_and_aspect(
+    mnt_file: str, projection: str, save_file_slope=None, save_file_aspect=None
+):
+    # Open file and add projection
+    rda = rd.LoadGDAL(mnt_file)
+    rda.projection = projection
+
+    # Derive slope
+    slope = rd.TerrainAttribute(rda, attrib="slope_degrees")
+
+    # Set points with no slope to no data / to get no orientation
+    rda[slope == 0.0] = rda.no_data
+
+    # Derive aspect
+    aspect = rd.TerrainAttribute(rda, attrib="aspect")
+
+    # Savings
+    if save_file_slope is not None:
+        rd.SaveGDAL(save_file_slope, slope)
+    if save_file_aspect is not None:
+        rd.SaveGDAL(save_file_aspect, aspect)
