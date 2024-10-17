@@ -9,8 +9,6 @@ from shapely.geometry.base import BaseGeometry
 from shapely.geometry.multipolygon import MultiPolygon
 from shapely.geometry.polygon import Polygon
 
-from pyce.tools.lc_mapping import LandCoverMap, oso_mapping_fusion_in_df
-
 
 def concat(list_shapes: list[str], ignore_index: bool = True):
     # Create empty dataframe
@@ -32,7 +30,9 @@ def concat(list_shapes: list[str], ignore_index: bool = True):
 
 def df_to_gdf(df: pd.DataFrame, x_col: str, y_col: str, crs: str):
     """
-    Transform a dataframe containing x and y coordinates to a GeoDataFrame with points geometry
+    Transform a dataframe containing x and y coordinates to
+    a GeoDataFrame with points geometry
+
     :param df: dataframe
     :param x_col: x column name
     :param y_col: y column name
@@ -48,25 +48,6 @@ def str_to_datetime(df: Union[pd.DataFrame, gpd.GeoDataFrame], column="datetime"
     df[column] = pd.to_datetime(df[column])
 
     return df
-
-
-def fusion_oso_shape(
-    list_shapes: list[str],
-    lc_map_to: LandCoverMap,
-    lc_map_from: LandCoverMap,
-    save: str = None,
-):
-    gdf = concat(list_shapes, ignore_index=False)
-
-    gdf = str_to_datetime(gdf, column="datetime")
-    gdf.set_index("datetime", inplace=True)
-
-    gdf = oso_mapping_fusion_in_df(gdf, lc_map_to=lc_map_to, lc_map_from=lc_map_from)
-
-    if save:
-        gdf.to_file(save)
-
-    return gdf
 
 
 def remove_bad_geometry(gdf: gpd.GeoDataFrame):
@@ -114,10 +95,10 @@ def select_overlapping_shapes(
     return gdf1_overlap
 
 
-def remove_interiors_geom(
+def fill_geom(
     geom: Union[BaseGeometry, gpd.GeoDataFrame],
-    buffer_size: int = 10,
-    buffer_delta: int = 0,
+    buffer_size: float = 10,
+    buffer_delta: float = 0,
 ):
     # Test types
     if isinstance(geom, Polygon):
@@ -172,37 +153,3 @@ def select_poly_from_multipoly(poly, selection: Union[str, BaseGeometry] = "area
         sel = [shapely.contains(p, selection) for p in list_poly]
         poly_sel = np.array(list_poly)[sel][0]
         return poly_sel
-
-
-def rename_lcmap_df_col(
-    df: pd.DataFrame,
-    lcmap: LandCoverMap,
-    col: str = "landcover",
-    prefix: bool = True,
-    inplace: bool = False,
-):
-    """
-    Rename the columns of a dataframe that corresponds to LandCoverMap codes.
-    Changes from codes to litteral names.
-
-    :param df: dataframe to renamed the columns from
-    :param lcmap: LandCoverMap that contains the correspondance code<->littereal type
-    :param col: column of the dataframe containing the landcover codes
-    :param inplace: If true, changes directly the dataframe (default FALSE)
-    :return: pd.Dataframe
-    """
-
-    lc_cols = df.columns[df.columns.str.startswith(col)]
-    if len(lc_cols) == 0:
-        raise IOError("No LandCoverMap column found. Check column name")
-
-    if not inplace:
-        df = df.copy()
-
-    if prefix:
-        df[col] = df[col].apply(lambda x: lcmap.get_type_of_code(int(x[-1])))
-    else:
-        df[col] = df[col].apply(lambda x: lcmap.get_type_of_code(x))
-
-    if inplace is False:
-        return df
