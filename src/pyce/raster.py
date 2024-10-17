@@ -1,12 +1,17 @@
 from threading import Lock
 from typing import Union
 
+import affine
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-import richdem as rd
+import rasterio
 import rioxarray as rioxr
 import xarray as xr
+from folium import Polygon
+from rioxarray import merge
+from shapely.geometry import shape
+from shapely.geometry.multipolygon import MultiPolygon
 
 
 def crop_raster_from_shp(
@@ -109,6 +114,42 @@ def mask_raster(ds: rioxr, val_to_mask: list[int], mask_val=np.nan):
     return ds
 
 
+def merge_raster(
+    raster_list: Union[list, str] = None, epsg: str = None, save_name: str = None
+):
+    """
+    Merge rasters using merge function from rioxarray
+
+    :param raster_list: List of files to merge.
+    :param epsg: EPSG code to project the tiles to before merging in case the file
+                 format do not contain this information. It must be the same for
+                 all files.
+    :param save_name: Full path to save merged raster. Default None (no savings)
+
+    :return: A rioxarray rasters of the merged tiles
+    """
+    if isinstance(raster_list, str):
+        raster_list = [raster_list]
+
+    rasters = []
+
+    for raster in raster_list:
+        rst = rioxr.open_rasterio(raster, mask_and_scale=True)
+        if epsg is not None:
+            rst = rst.rio.write_crs(epsg)
+        rasters.append(rst)
+
+    if len(rasters) == 1:
+        return rasters[0]
+
+    merged_raster = merge.merge_arrays(rasters)
+
+    if save_name is not None:
+        merged_raster.rio.to_raster(save_name)
+
+    return merged_raster
+
+
 def raster_to_dataset(
     path,
     var_name: str = None,
@@ -207,52 +248,57 @@ def get_area_slope_corrected(
     return surface
 
 
-def rd_terrain_slope_and_aspect(
-    mnt_file: str, projection: str, save_file_slope=None, save_file_aspect=None
-):
-    # Open file and add projection
-    rda = rd.LoadGDAL(mnt_file)
-    rda.projection = projection
-
-    # Derive slope
-    slope = rd.TerrainAttribute(rda, attrib="slope_degrees")
-
-    # Set points with no slope to no data / to get no orientation
-    rda[slope == 0.0] = rda.no_data
-
-    # Derive aspect
-    aspect = rd.TerrainAttribute(rda, attrib="aspect")
-
-    # Savings
-    if save_file_slope is not None:
-        rd.SaveGDAL(save_file_slope, slope)
-    if save_file_aspect is not None:
-        rd.SaveGDAL(save_file_aspect, aspect)
-
-
-def mnt_interp_like(
-    mnt_file: str,
+def raster_interp_like(
+    raster_file: str,
     projection: str,
     ds_like: xr.DataArray,
     save_file=None,
 ):
     # Open mnt raster
-    ds_mnt = rioxr.open_rasterio(
-        mnt_file, chunks={"x": 100, "y": 100}, mask_and_scale=True
+    ds_raster = rioxr.open_rasterio(
+        raster_file, chunks={"x": 100, "y": 100}, mask_and_scale=True
     )
 
-    ds_mnt = ds_mnt.rio.write_crs(projection, inplace=True)
-    bounds = ds_mnt.rio.bounds()
+    ds_raster = ds_raster.rio.write_crs(projection, inplace=True)
+    bounds = ds_raster.rio.bounds()
 
     # Clip the dataset to be interpolated on to the raster limits
     ds_like_clip = ds_like.rio.clip_box(bounds[0], bounds[1], bounds[2], bounds[3])
 
     # Do the interpolation + rewrite nodata
-    ds_mnt_interp = ds_mnt["band" == 1].interp_like(ds_like_clip["band" == 1])
-    ds_mnt_interp.rio.write_nodata(
-        ds_mnt.rio.encoded_nodata, inplace=True, encoded=True
+    ds_raster_interp = ds_raster["band" == 1].interp_like(ds_like_clip["band" == 1])
+    ds_raster_interp.rio.write_nodata(
+        ds_raster.rio.encoded_nodata, inplace=True, encoded=True
     )
 
     # Save files
     if save_file is not None:
-        ds_mnt_interp.rio.to_raster(save_file, compute=False)
+        ds_raster_interp.rio.to_raster(save_file, compute=False)
+
+
+def polygonize_raster(
+    data: xr.DataArray,
+    mask: xr.DataArray = None,
+    connectivity: int = 4,
+    transform: affine.Affine = None,
+):
+    # Check inputs
+    if mask is None:
+        mask = ~data.isnull()
+    if transform is None:
+        transform = data.rio.affine
+
+    # Use polygonize from rasterio
+    list_geoms = [
+        *rasterio.features.shapes(
+            data.astype(np.uint8),
+            connectivity=connectivity,
+            mask=mask,
+            transform=transform,
+        )
+    ]
+
+    # Transform list of list to list
+    polys = list(map(lambda x: x[0], list_geoms))
+
+    return MultiPolygon([shape(p) for p in polys])
