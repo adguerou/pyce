@@ -7,6 +7,7 @@ import numpy as np
 import pyproj
 import rioxarray as rioxr
 import xarray as xr
+from PyQt5.sip import array
 from pysheds.grid import Grid
 from pysheds.view import Raster, ViewFinder
 from shapely.geometry import MultiPolygon, Point, shape
@@ -65,7 +66,9 @@ def raster_shed_from_array(array: np.array, raster_like: Raster) -> Raster:
     )
 
 
-def raster_shed_from_rioxr(raster_rioxr: rioxr.raster_array, band=0) -> Raster:
+def raster_shed_from_rioxr(
+    raster_rioxr: rioxr.raster_array, band: int = None
+) -> Raster:
     """
     Transform a rioxarray object to a Raster object of Pyshed module
 
@@ -74,7 +77,10 @@ def raster_shed_from_rioxr(raster_rioxr: rioxr.raster_array, band=0) -> Raster:
     :return: Raster of Pyshed
     """
 
-    array = raster_rioxr.isel(band=band).to_numpy()
+    if band is not None:
+        raster_rioxr = raster_rioxr.isel(band=band)
+
+    array = raster_rioxr.to_numpy()
 
     return Raster(
         array,
@@ -320,12 +326,7 @@ def raster_shed_processing(raster_shed: Raster):
     return dem, grid, fdir, flats
 
 
-def get_catchment(
-    x: float,
-    y: float,
-    grid: Grid,
-    fdir: Grid,
-):
+def get_catchment(x: float, y: float, grid: Grid, fdir: Grid, radius_snap: float = 25):
     """
     Return catchment using Pyshed
 
@@ -339,8 +340,14 @@ def get_catchment(
     # Get accumulation map
     acc = grid.accumulation(fdir)
 
-    # Snap pour point to high accumulation cell
-    x_snap, y_snap = grid.snap_to_mask(acc > 100000, (x, y))
+    # Get accumulation within radius_snap
+    acc_xr = raster_shed_to_rioxr(acc, crs=grid.crs)
+    acc_max = acc_xr.where(
+        (acc_xr["x"] - x) ** 2 + (acc_xr["y"] - y) ** 2 < radius_snap**2
+    ).max()
+
+    # Snap pour point to highest accumulation cell within a snap_radius
+    x_snap, y_snap = grid.snap_to_mask(acc >= acc_max.data, (x, y))
 
     # Catchment
     catch = grid.catchment(x=x_snap, y=y_snap, fdir=fdir, xytype="coordinate")
@@ -356,6 +363,7 @@ def get_shed(
     buffer_size=5,
     buffer_delta=0,
     save_name: str = None,
+    save_acc: str = None,
 ):
     # Check projection
     # ================
@@ -377,7 +385,7 @@ def get_shed(
 
     # Create the pyshed Raster Object from rioxarray dem
     # ==================================================
-    raster_shed = raster_shed_from_rioxr(raster_rioxr=dem)
+    raster_shed = raster_shed_from_rioxr(raster_rioxr=dem, band=0)
 
     # Process the Raster object
     # =========================
@@ -391,6 +399,9 @@ def get_shed(
         grid=grid,
         fdir=fdir,
     )
+
+    if save_acc is not None:
+        raster_shed_to_rioxr(acc, crs=crs_dem).rio.to_raster(save_acc)
 
     # Transform catchment to shape + clean interiors
     catch_geom = raster_shed_to_geom(grid=grid, raster=catch)
@@ -429,6 +440,7 @@ def run_get_shed(
     buffer_size=5,
     buffer_delta=0,
     save_name: str = None,
+    save_acc: str = None,
 ):
     return get_shed(
         dem=dem,
@@ -438,6 +450,7 @@ def run_get_shed(
         buffer_size=buffer_size,
         buffer_delta=buffer_delta,
         save_name=save_name,
+        save_acc=save_acc,
     )
 
 
