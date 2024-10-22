@@ -7,6 +7,7 @@ import numpy as np
 import pyproj
 import rioxarray as rioxr
 import xarray as xr
+from networkx.algorithms.distance_measures import radius
 from PyQt5.sip import array
 from pysheds.grid import Grid
 from pysheds.view import Raster, ViewFinder
@@ -326,7 +327,7 @@ def raster_shed_processing(raster_shed: Raster):
     return dem, grid, fdir, flats
 
 
-def get_catchment(x: float, y: float, grid: Grid, fdir: Grid, radius_snap: float = 25):
+def get_catchment(x: float, y: float, grid: Grid, fdir: Grid, radius_snap: float = 15):
     """
     Return catchment using Pyshed
 
@@ -362,6 +363,7 @@ def get_shed(
     name_shed: str = "shed",
     buffer_size=5,
     buffer_delta=0,
+    radius_snap: int = 15,
     save_name: str = None,
     save_acc: str = None,
 ):
@@ -394,10 +396,7 @@ def get_shed(
     # Get the catchment
     # =================
     catch, x_snap, y_snap, acc = get_catchment(
-        x=xy_outlet[0],
-        y=xy_outlet[1],
-        grid=grid,
-        fdir=fdir,
+        x=xy_outlet[0], y=xy_outlet[1], grid=grid, fdir=fdir, radius_snap=radius_snap
     )
 
     if save_acc is not None:
@@ -439,6 +438,7 @@ def run_get_shed(
     name_shed: str = "shed",
     buffer_size=5,
     buffer_delta=0,
+    radius_snap: int = 15,
     save_name: str = None,
     save_acc: str = None,
 ):
@@ -449,6 +449,7 @@ def run_get_shed(
         name_shed=name_shed,
         buffer_size=buffer_size,
         buffer_delta=buffer_delta,
+        radius_snap=radius_snap,
         save_name=save_name,
         save_acc=save_acc,
     )
