@@ -13,6 +13,7 @@ from pysheds.grid import Grid
 from pysheds.view import Raster, ViewFinder
 from shapely.geometry import MultiPolygon, Point, shape
 from shapely.geometry.base import BaseGeometry
+from shapely.geometry.polygon import Polygon
 
 from pyce.raster import polygonize_raster
 from pyce.shape import fill_geom, select_poly_from_multipoly
@@ -239,6 +240,50 @@ def get_lake_shape(
     return lake_shp
 
 
+def burn_pit_to_dem(
+    dem, shp: Union[BaseGeometry, gpd.GeoDataFrame], deepness: float = 10
+):
+    # Clip buffer region around lake to lower memory usage
+    buffer_square = shp.centroid.buffer(np.sqrt(shp.area), cap_style="square")
+    dem_clip = dem.rio.clip(buffer_square, drop=True)
+
+    # Set original NaNs to zero not to replace them while interpolating
+    dem_orig_nan_sel = dem_clip.isnull()
+    dem_clip = dem_clip.where(~dem_orig_nan_sel, 0)
+
+    # Create a pits at center of lake
+    buffer_central = np.sqrt(shp.area / np.pi) / 4
+    lake_bary = shp.centroid.buffer(buffer_central)
+
+    bary_sel = dem_clip.rio.clip(
+        lake_bary, all_touched=True, drop=False, invert=True
+    ).isnull()
+
+    dem_deep = dem_clip.where(~bary_sel, dem_clip - deepness)
+
+    # Remove values within lake except centroid
+    lake_shp_minus_bary = shp.difference(lake_bary)
+    interp_sel = dem_clip.rio.clip(
+        lake_shp_minus_bary, all_touched=True, drop=False, invert=True
+    ).isnull()
+
+    dem_deep_nan = dem_deep.where(~interp_sel, other=np.nan)
+
+    # Interpolate
+    dem_pit = dem_deep_nan.rio.interpolate_na(method="linear")
+
+    # Reset the original NaNs
+    dem_pit = dem_pit.where(~dem_orig_nan_sel, np.nan)
+
+    # Merge the original dem with the pit creates
+    dem, dem_pit_align = xr.align(dem, dem_pit, join="left")
+
+    sel = dem.rio.clip(buffer_square, drop=False).isnull()
+    dem_burnt = dem.where(sel, other=dem_pit_align)
+
+    return dem_burnt
+
+
 def burn_lake_to_dem(
     dem: xr.DataArray,
     lake_shp: Union[BaseGeometry, gpd.GeoDataFrame],
@@ -268,10 +313,12 @@ def burn_lake_to_dem(
 
     # Reproject to same coordinates + selection of lake
     lake_shp = lake_shp.to_crs(dem.rio.crs)
-    lake_sel = ~dem.rio.clip(lake_shp.geometry, all_touched=True, drop=False).isnull()
+    lake_sel = dem.rio.clip(
+        lake_shp.geometry, all_touched=True, drop=False, invert=True
+    ).isnull()
 
     # Get value to replace lake value with / Min by default
-    allowed_meth = ["min", "max", "mean", "median"]
+    allowed_meth = ["min", "max", "mean", "median", "pit"]
     lake_alt = dem.where(lake_sel).min().data
 
     if isinstance(method, Union[int, float]):
@@ -288,8 +335,13 @@ def burn_lake_to_dem(
     # Burn dem
     dem_burnt = dem.where(~lake_sel, other=lake_alt)
 
+    # Create a pit within the lake shape after flattening of it
+    if method == "pit":
+        dem_burnt = burn_pit_to_dem(dem_burnt, shp=lake_shp, deepness=20)
+
     if save_name is not None:
         dem_burnt.rio.to_raster(save_name)
+
     return dem_burnt
 
 
@@ -319,12 +371,11 @@ def raster_shed_processing(raster_shed: Raster):
 
     # flats
     inflated_dem = grid.resolve_flats(flooded_dem)
-    flats = grid.detect_flats(flooded_dem)
 
     # Flow and accumulation
     fdir = grid.flowdir(inflated_dem)
 
-    return dem, grid, fdir, flats
+    return dem, grid, fdir
 
 
 def get_catchment(x: float, y: float, grid: Grid, fdir: Grid, radius_snap: float = 15):
@@ -391,7 +442,7 @@ def get_shed(
 
     # Process the Raster object
     # =========================
-    dem, grid, fdir, flats = raster_shed_processing(raster_shed=raster_shed)
+    dem, grid, fdir = raster_shed_processing(raster_shed=raster_shed)
 
     # Get the catchment
     # =================
