@@ -7,13 +7,10 @@ import numpy as np
 import pyproj
 import rioxarray as rioxr
 import xarray as xr
-from networkx.algorithms.distance_measures import radius
-from PyQt5.sip import array
 from pysheds.grid import Grid
 from pysheds.view import Raster, ViewFinder
 from shapely.geometry import MultiPolygon, Point, shape
 from shapely.geometry.base import BaseGeometry
-from shapely.geometry.polygon import Polygon
 
 from pyce.raster import polygonize_raster
 from pyce.shape import fill_geom, select_poly_from_multipoly
@@ -345,7 +342,7 @@ def burn_lake_to_dem(
     return dem_burnt
 
 
-def raster_shed_processing(raster_shed: Raster):
+def raster_shed_processing(raster_shed: Raster, routing="d8"):
     """
     Process a raster shed by filling pits, depressions and flats,
     return the flow direction
@@ -370,15 +367,17 @@ def raster_shed_processing(raster_shed: Raster):
     flooded_dem = grid.fill_depressions(pit_filled_dem)
 
     # flats
-    inflated_dem = grid.resolve_flats(flooded_dem)
+    inflated_dem = grid.resolve_flats(flooded_dem, eps=1e-9)
 
     # Flow and accumulation
-    fdir = grid.flowdir(inflated_dem)
+    fdir = grid.flowdir(inflated_dem, routing=routing)
 
     return dem, grid, fdir
 
 
-def get_catchment(x: float, y: float, grid: Grid, fdir: Grid, radius_snap: float = 15):
+def get_catchment(
+    x: float, y: float, grid: Grid, fdir: Grid, routing="d8", radius_snap: float = 15
+):
     """
     Return catchment using Pyshed
 
@@ -390,7 +389,7 @@ def get_catchment(x: float, y: float, grid: Grid, fdir: Grid, radius_snap: float
 
     """
     # Get accumulation map
-    acc = grid.accumulation(fdir)
+    acc = grid.accumulation(fdir, routing=routing)
 
     # Get accumulation within radius_snap
     acc_xr = raster_shed_to_rioxr(acc, crs=grid.crs)
@@ -402,7 +401,9 @@ def get_catchment(x: float, y: float, grid: Grid, fdir: Grid, radius_snap: float
     x_snap, y_snap = grid.snap_to_mask(acc >= acc_max.data, (x, y))
 
     # Catchment
-    catch = grid.catchment(x=x_snap, y=y_snap, fdir=fdir, xytype="coordinate")
+    catch = grid.catchment(
+        x=x_snap, y=y_snap, fdir=fdir, xytype="coordinate", routing=routing
+    )
 
     return [catch, x_snap, y_snap, acc]
 
