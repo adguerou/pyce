@@ -482,6 +482,42 @@ def get_shed(
     return gdf_shed
 
 
+def get_river_network(
+    dem: rioxr.raster_array, fdir, acc, order=100, catch=None, x=None, y=None
+):
+    # Create grid
+    raster_shed = raster_shed_from_rioxr(raster_rioxr=dem, band=0)
+    grid = Grid.from_raster(raster_shed)
+
+    # FDIR
+    if fdir is None:
+        _dem, _grid, fdir = raster_shed_processing(raster_shed=raster_shed)
+    else:
+        fdir = raster_shed_from_rioxr(fdir)
+
+    # CATCH
+    if catch is None:
+        catch, x_snap, y_snap, _acc = get_catchment(x=x, y=y, grid=grid, fdir=fdir)
+    else:
+        if dem.rio.crs != catch.crs:
+            raise ValueError(
+                f"CRS of dem ({dem.rio.crs}) different from CRS of catch ({catch.crs})"
+            )
+        catch = dem.rio.clip(catch, drop=False)
+        catch = raster_shed_from_rioxr(catch, band=0)
+
+    # Clip the view to the catchment
+    grid.clip_to(catch)
+
+    # ACCUMULATION
+    if acc is None:
+        acc = grid.accumulation(fdir, apply_output_mask=False)
+    else:
+        acc = raster_shed_from_rioxr(acc, band=0)
+
+    return grid.extract_river_network(fdir, acc > order), [grid, fdir, acc]
+
+
 @dask.delayed
 def run_get_shed(
     dem: xr.DataArray,
