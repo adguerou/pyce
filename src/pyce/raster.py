@@ -8,7 +8,6 @@ import pandas as pd
 import rasterio
 import rioxarray as rioxr
 import xarray as xr
-from folium import Polygon
 from rioxarray import merge
 from shapely.geometry import shape
 from shapely.geometry.multipolygon import MultiPolygon
