@@ -87,6 +87,14 @@ s2glc = {
     _lcm_reindex: [6, 5, 1, 0, 3, 4, 2, 7, 8],
 }
 
+tp_lc10 = {
+    _mapping_kwargs: {"col_type": 0, "col_code": 1, "header": None, "sep": ":"},
+    _lcm_colors: lc_colormaps.colors_tp_lc10,
+    _lcm_codes_to_mask: None,
+    _lcm_mask_val: None,
+    _lcm_reindex: None,
+}
+
 # Dictionnary that compile all mappings
 # --------------------------------------
 dict_lc_maps = {
@@ -97,6 +105,7 @@ dict_lc_maps = {
     "s2glc": s2glc,
     "h1b": h1b,
     "h1b_paper": h1b_paper,
+    "tp_lc10": tp_lc10,
 }
 
 

@@ -13,7 +13,7 @@ from shapely.geometry import MultiPolygon, Point, shape
 from shapely.geometry.base import BaseGeometry
 
 from pyce.raster import polygonize_raster
-from pyce.shape import fill_geom, select_poly_from_multipoly
+from pyce.shape import fill_geometry, select_poly_from_multipoly
 
 
 # =====================================
@@ -216,7 +216,7 @@ def get_lake_shape(
 
     # Fill geometries
     if buffer_size is not None:
-        lake_shp = fill_geom(
+        lake_shp = fill_geometry(
             lake_shp, buffer_size=buffer_size, buffer_delta=bufffer_delta
         )
 
@@ -456,7 +456,7 @@ def get_shed(
 
     # Transform catchment to shape + clean interiors
     catch_geom = raster_shed_to_geom(grid=grid, raster=catch)
-    catch_geom_filled = fill_geom(
+    catch_geom_filled = fill_geometry(
         catch_geom, buffer_size=buffer_size, buffer_delta=buffer_delta
     )
     catch_geom_sel = select_poly_from_multipoly(catch_geom_filled, selection="area")
