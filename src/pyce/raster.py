@@ -114,7 +114,11 @@ def mask_raster(ds: rioxr, val_to_mask: list[int], mask_val=np.nan):
 
 
 def merge_raster(
-    raster_list: Union[list, str] = None, epsg: str = None, save_name: str = None
+    raster_list: Union[list, str] = None,
+    epsg: str = None,
+    save_name: str = None,
+    mask_and_scale: bool = True,
+    compress="lzw",
 ):
     """
     Merge rasters using merge function from rioxarray
@@ -133,7 +137,7 @@ def merge_raster(
     rasters = []
 
     for raster in raster_list:
-        rst = rioxr.open_rasterio(raster, mask_and_scale=True)
+        rst = rioxr.open_rasterio(raster, mask_and_scale=mask_and_scale)
         if epsg is not None:
             rst = rst.rio.write_crs(epsg)
         rasters.append(rst)
@@ -144,7 +148,7 @@ def merge_raster(
     merged_raster = merge.merge_arrays(rasters)
 
     if save_name is not None:
-        merged_raster.rio.to_raster(save_name)
+        merged_raster.rio.to_raster(save_name, compress=compress)
 
     return merged_raster
 

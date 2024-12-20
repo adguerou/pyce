@@ -46,12 +46,46 @@ def df_to_gdf(df: pd.DataFrame, x_col: str, y_col: str, crs: str):
 
 def str_to_datetime(df: Union[pd.DataFrame, gpd.GeoDataFrame], column="datetime"):
     df[column] = pd.to_datetime(df[column])
-
     return df
 
 
 def remove_bad_geometry(gdf: gpd.GeoDataFrame):
     return gdf.iloc[np.where(gdf["geometry"].values != None)[0]]
+
+
+def remove_linestring(gdf: gpd.GeoDataFrame):
+    """
+    Remove LineString geometry within GeometryCollection from GeodataFrame object
+
+    :param gdf:
+    :return:
+    """
+    gdf_explode = gdf.explode(index_parts=False)
+    gdf_clean = gdf_explode[gdf_explode.geometry.type != "LineString"]
+    return gdf_clean.reset_index(drop=False).dissolve(by="index")
+
+
+def fix_geometry(gdf: gpd.GeoDataFrame):
+    """
+    Fix geometries as in QGIS (self-ring etc)
+    :param gdf:
+    :return:
+    """
+    gdf["geometry"] = gdf["geometry"].make_valid()
+    return gdf
+
+
+def clean_multipolygon(geom, area_min=20 * 20 * 2):
+    """
+    Remove
+    :param geom:
+    :param area_min:
+    :return:
+    """
+    if geom.geom_type == "MultiPolygon":
+        return shapely.MultiPolygon([p for p in geom.geoms if p.area > area_min])
+    else:
+        return geom
 
 
 def select_overlapping_shapes(
@@ -95,10 +129,12 @@ def select_overlapping_shapes(
     return gdf1_overlap
 
 
-def fill_geom(
+def fill_geometry(
     geom: Union[BaseGeometry, gpd.GeoDataFrame],
     buffer_size: float = 10,
     buffer_delta: float = 0,
+    cap_style: str = "round",
+    join_style: str = "round",
 ):
     # Test types
     if isinstance(geom, Polygon):
@@ -107,7 +143,9 @@ def fill_geom(
         raise ValueError(f"'geom' must be Multi or single Polygon, got {type(geom)}")
 
     # Create a buffered geometry + merged
-    geom_buff_merged = shapely.unary_union(geom.buffer(buffer_size))
+    geom_buff_merged = shapely.unary_union(
+        geom.buffer(buffer_size, cap_style=cap_style, join_style=join_style)
+    )
 
     # Depending on the resulting merge, need to split Multigeometry
     if isinstance(geom_buff_merged, MultiPolygon):
@@ -123,7 +161,9 @@ def fill_geom(
     # values can lead to Multipolygon type whereas got Polygon as input
     list_geom_ext = []
     for g_buff_ext in list_geom_buff_ext:
-        g_ext = g_buff_ext.buffer(-buffer_size - buffer_delta)
+        g_ext = g_buff_ext.buffer(
+            -buffer_size - buffer_delta, cap_style=cap_style, join_style=join_style
+        )
 
         if isinstance(g_ext, MultiPolygon):
             g_multi = list(g_ext.geoms)

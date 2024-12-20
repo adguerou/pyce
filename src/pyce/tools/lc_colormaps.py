@@ -106,3 +106,21 @@ colors_h1b_paper = [
     "#fff2ae",  # sols peu végétalisés
     "#33a02c",  # vegetation
 ]
+
+colors_tp_lc10 = [
+    "#d19b71",  # Bare land : 0
+    "#f5ebe2",  # Alpine scree
+    "#7fc97f",  # Alpine grassland
+    "#d8eed8",  # Alpine meadow
+    "#1b9e77",  # Evergreen needle-leaved forest
+    "#1b9e77",  # Deciduous needle-leaved forest
+    "#1b9e77",  # Evergreen broadleaved forest
+    "#1b9e77",  # Deciduous broadleaved forest
+    "#1b9e77",  # Mixed forest
+    "#6a3d9a",  # Evergreen shrubland
+    "#6a3d9a",  # Deciduous shrubland
+    "#1f78b4",  # Water body
+    "#7638fb",  # Wetland
+    "#030200",  # Cultivated vegetation
+    "#a6cee3",  # Permanent ice and snow
+]

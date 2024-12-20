@@ -40,6 +40,14 @@ def add_s2_ncri(image):
     )
 
 
+def add_s2_cvi(image):
+    green = image.select("B3")
+    red = image.select("B4")
+    nir = image.select("B8")
+
+    return image.addBands(nir * red / green**2)
+
+
 # =====================================================================================
 # General tools
 # =====================================================================================

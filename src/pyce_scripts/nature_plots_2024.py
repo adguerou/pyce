@@ -156,6 +156,7 @@ def plot_donuts(
     col_rocks="rocks",
     col_snow_and_ice="snow_and_ice",
     col_g1850="Total",
+    country_total="Alps",
     save_dir=None,
     save_name_ext=None,
 ):
@@ -205,7 +206,7 @@ def plot_donuts(
         # --------------------------
         inner_ratio = (
             df_donuts_area[col_g1850]
-            / df_donuts.loc[df_donuts.index == "Alps", col_g1850].iloc[0]
+            / df_donuts.loc[df_donuts.index == country_total, col_g1850].iloc[0]
         )
         if inner_ratio != 1:
             inner_ratio *= inner_ratio_factor
@@ -233,7 +234,7 @@ def plot_donuts(
 
         # Put labels to inner pie
         # -----------------------
-        if df_donuts_area.name != "Alps":
+        if df_donuts_area.name != country_total:
             inner_label_pos = inner_radius + 0.1
         else:
             inner_label_pos = 0.1
@@ -370,6 +371,18 @@ def plot_donuts(
                     y=labels[0].get_position()[1] + 0.18,
                 )
             )
+
+        # Move surface of rocks Himalaya
+        print(df_donuts_area.name)
+        if df_donuts_area.name == "Himalaya":
+            print(df_donuts_area.name)
+            labels[1].update(
+                dict(
+                    x=labels[1].get_position()[0] - 0.65,
+                    y=labels[1].get_position()[1] + 0.25,
+                )
+            )
+
         # Put correct values for snow and ice
         # -----------------------------------
         # if shift_snow_and_ice != 0:
@@ -503,10 +516,12 @@ def plot_donuts(
             # Scale and offset size of each bar
             # ---------------------------------
             y_lower_limit = pie_size - margin_pie_bar  # bottom of bars
-            if df_bars_area.name != "Alps":
+            if df_bars_area.name != country_total:
                 df_bars_max = (df_bars.loc[df_bars.index == "CH"].iloc[0]).max()
             else:
-                df_bars_max = (df_bars.loc[df_bars.index == "Alps"].iloc[0]).max()
+                df_bars_max = (
+                    df_bars.loc[df_bars.index == country_total].iloc[0]
+                ).max()
 
             heights = df_bars_area.values * (1 - y_lower_limit) / df_bars_max
 
