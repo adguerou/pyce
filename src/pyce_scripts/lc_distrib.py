@@ -54,6 +54,8 @@ def get_lc_percent(
 def get_lc_surface(
     df: Union[pd.DataFrame, gpd.GeoDataFrame],
     groupby: [str] = ["Country", "glacier", "veget", "landcover"],
+    index: [str] = None,
+    columns: [str] = None,
     round_dec: int = None,
     add_total: bool = True,
     slope_correction: bool = True,
@@ -90,9 +92,14 @@ def get_lc_surface(
     ).reset_index()  # transform multi index to columns
 
     # Reshape groups as row and landcover surface as columns
+    if index is None:
+        index = groupby[:-1]
+    if columns is None:
+        columns = groupby[-1]
+
     ds_surface_all_index = df_surface.pivot_table(
-        index=groupby[:-1],
-        columns=groupby[-1],
+        index=index,
+        columns=columns,
         values=f"{area_col_name}{area_corrected_col_name}",
     ).fillna(
         0
@@ -101,7 +108,9 @@ def get_lc_surface(
     # Change name of lc_col_name to convention
     ds_surface_all_index.rename(
         columns={
-            col: change_lc_name_in_df(col) for col in ds_surface_all_index.columns
+            col: change_lc_name_in_df(col)
+            for col in ds_surface_all_index.columns
+            if isinstance(col, float) or isinstance(col, int)
         },
         inplace=True,
     )

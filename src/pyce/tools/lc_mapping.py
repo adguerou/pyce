@@ -70,7 +70,7 @@ h1b_paper = {
     _lcm_colors: lc_colormaps.colors_h1b_paper,
     _lcm_codes_to_mask: None,
     _lcm_mask_val: None,
-    _lcm_reindex: [3, 2, 1, 6, 0, 4, 5, 7],
+    _lcm_reindex: [3, 2, 1, 6, 0, 4, 5, 7, 8],
 }
 
 s2glc = {

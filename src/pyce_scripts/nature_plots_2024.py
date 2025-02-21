@@ -148,6 +148,113 @@ def get_stats_table(
     return donuts_table, bar_table
 
 
+def get_fig1_tables(
+    df_stats,
+    round_dec: int = None,
+    col_name_country="Country",
+    col_name_snow_and_ice="snow_and_ice",
+    col_name_deglaciated="deglaciated",
+    col_name_aquatic="aquatic",
+    col_name_veget="veget",
+    col_name_rocks="rocks",
+    col_name_landcover="landcover",
+    val_rocks=0,
+    val_snow=4,
+    val_water=5,
+    slope_correction=False,
+):
+    def _get_surf_and_perc(
+        df, groupby=[col_name_country, "category"], columns="category"
+    ):
+        surf = lc_distrib.get_lc_surface(
+            df,
+            groupby=groupby,
+            index=col_name_country,
+            columns=columns,
+            round_dec=round_dec,
+            add_total=True,
+            slope_correction=slope_correction,
+        )
+
+        # Add alpine total
+        surf.loc["ALPS"] = surf.sum()
+
+        # Add percentage
+        perc = surf.div(surf["Total_LC"], axis=0) * 100
+
+        # Add metrics
+        perc["metric"] = "percent"
+        surf["metric"] = "surface [km2]"
+
+        # Concat surface and percentage
+        surf_and_perc = (
+            pd.concat([surf, perc])
+            .reset_index()
+            .set_index([col_name_country, "metric"])
+            .sort_index()
+        )
+        return surf_and_perc
+
+    # Copy dataframe and create category column for which we derive stats
+    df_lia = df_stats.copy()
+    df_lia["category"] = None
+
+    # 1. Statistics over LIA area
+    # ===========================
+
+    # Create categories
+    # -----------------
+    # Snow & Ice
+    df_lia.loc[
+        df_lia[col_name_landcover] == val_snow, "category"
+    ] = col_name_snow_and_ice
+
+    # Deglaciated
+    df_lia.loc[
+        (df_lia.glacier == False) & (df_lia.landcover != 4), "category"
+    ] = col_name_deglaciated
+
+    # Get surfaces and percentages
+    # ----------------------------
+    surfaces_lia = _get_surf_and_perc(df_lia)
+
+    # 2. Statistics over DEGLACIATED area
+    # ===================================
+    df_deglaciated = df_lia.loc[(df_lia.glacier == False) & (df_lia.landcover != 4)]
+    df_deglaciated.loc[:, "category"] = None
+
+    # Create categories
+    # -----------------
+    # Rocks
+    df_deglaciated.loc[
+        df_deglaciated[col_name_landcover] == val_rocks, "category"
+    ] = col_name_rocks
+
+    # Veget
+    df_deglaciated.loc[df_deglaciated.veget == True, "category"] = col_name_veget
+
+    # Aquatic
+    df_deglaciated.loc[
+        df_deglaciated[col_name_landcover] == val_water, "category"
+    ] = col_name_aquatic
+
+    # Get surfaces and percentages
+    # ----------------------------
+    surfaces_deglaciated = _get_surf_and_perc(df_deglaciated)
+
+    # 3. Statistics over VEGETATION area
+    # ==================================
+    df_veget = df_lia.loc[(df_lia.veget == True)]
+
+    surfaces_veget = _get_surf_and_perc(
+        df_veget,
+        groupby=[col_name_country, col_name_landcover],
+        columns=col_name_landcover,
+    )
+
+    return surfaces_lia, surfaces_deglaciated, surfaces_veget
+
+
 def plot_donuts(
     df_donuts: pd.DataFrame,
     df_bars: pd.DataFrame,
@@ -723,6 +830,676 @@ def plot_donuts(
                     save_dir, f"donuts_{df_donuts_area.name}_{save_name_ext}.png"
                 ),
                 dpi=200,
+                transparent=True,
+            )
+
+
+def plot_donuts_v2(
+    df_lia: pd.DataFrame,
+    df_deglaciated: pd.DataFrame,
+    df_veget: pd.DataFrame,
+    lcmap: LandCoverMap,
+    index_surface: str = "surface [km2]",
+    index_percent: str = "percent",
+    col_snow_and_ice="snow_and_ice",
+    col_deglaciated="deglaciated",
+    col_aquatic="aquatic",
+    col_veget="veget",
+    col_rocks="rocks",
+    col_country_total="Total_LC",
+    row_total_alps="ALPS",
+    save_dir=None,
+    save_name_ext=None,
+):
+    # Reshape df so each country is a dataframe line
+    # ==============================================
+
+    # LIA with snow_and_ice / deglaciated
+    # -----------------------------------
+    df_lia = df_lia.loc[df_lia.index.get_level_values(1) == index_surface].droplevel(1)
+
+    # Deglaciated with aquatic/rocks/veget
+    # -------------------------------------
+    df_deglaciated_surf = df_deglaciated.loc[
+        df_deglaciated.index.get_level_values(1) == index_surface
+    ].droplevel(1)
+    df_deglaciated_perc = df_deglaciated.loc[
+        df_deglaciated.index.get_level_values(1) == index_percent
+    ].droplevel(1)
+
+    # Veget with each landcover type
+    # ------------------------------
+    df_veget_surf = df_veget.loc[
+        df_veget.index.get_level_values(1) == index_surface
+    ].droplevel(1)
+    df_veget_percent = df_veget.loc[
+        df_veget.index.get_level_values(1) == index_percent
+    ].droplevel(1)
+
+    # general parameters
+    # ==================
+    # First donuts
+    ax_size = 1
+    pie_size = 0.7 - 0.05
+    wedge_size = 0.2
+    margin_inner_pie = 0.05
+
+    # Second donuts
+    pie_size_ext = 0.94 - 0.05
+    wedge_size_ext = 0.2
+
+    # ================================
+    #               Plots
+    # =================================
+    for area in range(df_lia.shape[0]):
+        # ======
+        # Figure
+        # ======
+        fig, ax = plt.subplots(figsize=(4.5, 4.5))
+        ax.set_aspect("equal")
+        ax.set_xlim([-ax_size, ax_size])
+        ax.set_ylim([-ax_size, ax_size])
+
+        # ==========================
+        # First pie and first donut
+        # ========================
+        df_lia_area = df_lia.iloc[area]
+
+        # =====
+        # INNER
+        # =====
+        inner_vals = [df_lia_area[col_country_total]] * 2
+        inner_colors = ["#85bfde"] * 2
+
+        # Define radius of inner pie
+        # --------------------------
+        max_radius = (pie_size - wedge_size) - margin_inner_pie
+        max_surf = df_lia.loc[df_lia.index == row_total_alps, col_country_total].iloc[0]
+        surf_area = df_lia_area[col_country_total]
+        delta_surf_max = max_surf - 1  # 1 km2 is SL
+        delta_radius_max = max_radius - 0.05  # must be <=max_radius
+
+        inner_radius = (
+            max_radius - (max_surf - surf_area) / delta_surf_max * delta_radius_max
+        )
+
+        # add external black line
+        # -----------------------
+        circle = plt.Circle((0, 0), inner_radius, color="k", linewidth=4)
+        ax.add_patch(circle)
+
+        # =============
+        # Plot the pie
+        # =============
+        wedges, labels = ax.pie(
+            inner_vals,
+            radius=inner_radius,
+            colors=inner_colors,
+            pctdistance=0.0,
+            wedgeprops=dict(width=inner_radius, color=inner_colors[0], linewidth=1),
+            counterclock=False,
+            startangle=0,
+        )
+
+        # Put labels to inner pie
+        # -----------------------
+        if df_lia_area.name != row_total_alps:
+            inner_label_pos = inner_radius + 0.1
+        else:
+            inner_label_pos = 0.1
+
+        labels[0].update(
+            dict(
+                text=f"{df_lia_area.name}",
+                color="k",
+                weight="bold",
+                fontsize=18,
+                fontstyle="normal",
+                horizontalalignment="center",
+                x=0,
+                y=inner_label_pos,
+            )
+        )
+        labels[1].update(
+            dict(
+                text=f"{inner_vals[0]:.0f} km²",
+                color="k",
+                fontsize=14,
+                horizontalalignment="center",
+                x=0,
+                y=-inner_label_pos,
+            )
+        )
+
+        # ===============
+        #   FIRST DONUTS
+        # ================
+        outer_vals = [
+            df_lia_area[col_snow_and_ice],  # snow
+            df_lia_area[col_deglaciated],  # deglaciated
+        ]
+
+        outer_colors = [
+            lcmap.get_color_of_code(code=4),  # snow
+            lcmap.get_color_of_code(code=9),  # deglaciated
+        ]
+
+        # Shift start angle for no water/vegetation
+        # -----------------------------------------
+        if outer_vals[0] == 0.0:
+            startangle = -60
+        else:
+            startangle = 0
+
+        # Plot pie
+        # --------
+        wedges, labels, autotexts = ax.pie(
+            outer_vals,
+            radius=pie_size,
+            colors=outer_colors,
+            autopct=lambda per: "({:.1f}%)".format(per),
+            pctdistance=0.8,
+            labels=[f"{surf:.0f}" for surf in outer_vals],
+            labeldistance=0.82,
+            wedgeprops=dict(width=wedge_size, edgecolor="k", linewidth=1),
+            counterclock=True,
+            startangle=startangle,
+        )
+
+        # Update surface / percentage
+        # ---------------------------
+        # Remove 0 km
+        for at, lbl in zip(autotexts, labels):
+            if float(at.get_text()[1:-2]) != 0.0:
+                at.update(
+                    {
+                        "fontsize": 10,
+                        "fontstyle": "italic",
+                        "horizontalalignment": "center",
+                        "verticalalignment": "center",
+                    }
+                )
+                lbl.update(
+                    {
+                        "fontsize": 13,
+                        "color": "k",
+                        "horizontalalignment": "center",
+                        "verticalalignment": "center",
+                    }
+                )
+            else:
+                at.update({"text": ""})
+                lbl.update({"text": ""})
+
+        # FUNCTION
+        # ---------------------------------------------------------------------------
+        def update_lbl_pct(wedge, lbl_pct, delta_ang, delta_dist, rot=0):
+            lbl_pct_ang = (wedge.theta2 - wedge.theta1) / 2.0 + wedge.theta1
+            lbl_pct_dist = lbl_pct.get_position()[1] / np.sin(np.deg2rad(lbl_pct_ang))
+
+            update_ang = lbl_pct_ang + delta_ang
+            x = np.cos(np.deg2rad(update_ang)) * (lbl_pct_dist + delta_dist)
+            y = np.sin(np.deg2rad(update_ang)) * (lbl_pct_dist + delta_dist)
+
+            lbl_pct.update(dict(x=x, y=y, rotation=rot))
+
+        # ---------------------------------------------------------------------------
+
+        # Move snow&ice
+        update_lbl_pct(wedges[0], labels[0], delta_ang=10, delta_dist=-0.02)
+        update_lbl_pct(wedges[0], autotexts[0], delta_ang=-40, delta_dist=0, rot=-45)
+
+        # Move deglaciated
+        if df_lia_area.name in df_veget_surf.index:
+            update_lbl_pct(wedges[1], labels[1], delta_ang=0, delta_dist=0.0)
+            update_lbl_pct(wedges[1], autotexts[1], delta_ang=55, delta_dist=0, rot=40)
+        else:
+            update_lbl_pct(
+                wedges[1], autotexts[1], delta_ang=0, delta_dist=0.25, rot=30
+            )
+
+        # ============================================================================
+        #                          Deglaciated plot
+        # =============================================================================
+        df_deglaciated_area = df_deglaciated_surf.iloc[area]
+
+        outer_vals = [
+            df_lia_area[col_snow_and_ice],  # snow
+            df_deglaciated_area[col_aquatic],  # water
+            df_deglaciated_area[col_rocks],  # rocks
+            df_deglaciated_area[col_veget],  # veget
+        ]
+
+        outer_colors = [
+            "#ffffff00",  # snow / transparent
+            lcmap.get_color_of_code(code=5),  # rocks
+            lcmap.get_color_of_code(code=0),  # rocks
+            lcmap.get_color_of_code(code=8),  # vegetation
+        ]
+
+        # Shift start angle for no water/vegetation
+        # -----------------------------------------
+        index_water = 1
+        index_rocks = 2
+
+        if outer_vals[0] == 0.0:
+            startangle = -60
+        else:
+            startangle = 0
+
+        # Redefine outer_vals for small values of water
+        # ----------------------------------------------------
+        shift_water = 0
+        if (outer_vals[index_water] / df_lia_area[col_country_total] * 100 < 1) & (
+            outer_vals[index_water] != 0
+        ):  # Below 1% of total
+            shift_water = df_lia_area[col_country_total] / 100  # 1% of total in surface
+            outer_vals[index_water] += shift_water  # add 1% to water
+            outer_vals[index_rocks] -= shift_water  # remove 1% to rocks
+
+        if outer_vals[index_rocks] / df_lia_area[col_country_total] == 1:
+            outer_vals = [outer_vals[index_rocks]]
+            outer_colors = [outer_colors[index_rocks]]
+
+        # Plot pie
+        # --------
+        wedges, labels, autotexts = ax.pie(
+            outer_vals,
+            radius=pie_size_ext,
+            colors=outer_colors,
+            autopct="(%.1f%%)",
+            pctdistance=0.86,
+            labels=[f"{surf:.0f}" for surf in outer_vals],
+            labeldistance=0.88,
+            wedgeprops=dict(width=wedge_size_ext, edgecolor="k", linewidth=1),
+            counterclock=True,
+            startangle=startangle,
+        )
+
+        # Remove edgeline of snow
+        # =======================
+        if df_lia_area.name in df_veget_surf.index:
+            wedges[0].update({"edgecolor": "#ffffff00"})
+
+        # Put correct values for snow and ice
+        # -----------------------------------
+        if shift_water != 0:
+            for at, sign in zip(
+                [autotexts[index_water], autotexts[index_rocks]], [-1, 1]
+            ):
+                orig_surf = (
+                    float(at.get_text()[1:-2]) * df_lia_area[col_country_total] / 100
+                    + sign * shift_water
+                )
+                orig_percent = orig_surf / df_lia_area[col_country_total] * 100
+                at.set_text(f"({orig_percent:.1f}%)")
+
+        # Remove values for snow & ice
+        autotexts[0].update({"text": ""})
+        labels[0].update({"text": ""})
+
+        # Update surface / percentage
+        # ---------------------------
+        for at, lbl in zip(autotexts, labels):
+            at.update(
+                {
+                    "fontsize": 10,
+                    "fontstyle": "italic",
+                    "horizontalalignment": "center",
+                    "verticalalignment": "center",
+                }
+            )
+            lbl.update(
+                {
+                    "fontsize": 13,
+                    "color": "k",
+                    "horizontalalignment": "center",
+                    "verticalalignment": "center",
+                }
+            )
+
+        if df_lia_area.name in df_veget_surf.index:
+            # Move water
+            update_lbl_pct(wedges[1], labels[1], delta_ang=0, delta_dist=0.3)
+            update_lbl_pct(wedges[1], autotexts[1], delta_ang=8, delta_dist=0.3, rot=0)
+
+            # Move rocks
+            update_lbl_pct(wedges[2], labels[2], delta_ang=0, delta_dist=0.0)
+            update_lbl_pct(wedges[2], autotexts[2], delta_ang=45, delta_dist=0, rot=35)
+
+            # Move veget
+            update_lbl_pct(wedges[3], labels[3], delta_ang=0, delta_dist=0.25)
+            update_lbl_pct(wedges[3], autotexts[3], delta_ang=-8, delta_dist=0.3, rot=0)
+
+        # ========================================================
+        #                       BAR PLOT
+        # ========================================================
+
+        # Define subplots
+        # ---------------
+        ax_bar = ax.inset_axes([0, 0, 1, 1], polar=True, zorder=10)
+        ax_bar.set_ylim([0, ax_size])
+        ax_bar.set_frame_on(False)
+        ax_bar.xaxis.grid(False)
+        ax_bar.yaxis.grid(False)
+        ax_bar.set_xticks([])
+        ax_bar.set_yticks([])
+
+        # Functions
+        # ---------
+        def get_perc_line(
+            val,
+            ymin=None,
+            ymax=None,
+            per_max=None,
+        ):
+            return ymin + val * ymax / per_max
+
+        def plot_perc_lines(
+            vals,
+            angles=None,
+            ymin=None,
+            ymax=None,
+            per_max=None,
+            color="k",
+            lw=0.6,
+            ls="--",
+            zorder=0,
+            ax=ax_bar,
+        ):
+            for val in vals:
+                ax.plot(
+                    angles,
+                    [
+                        get_perc_line(
+                            val,
+                            ymin=ymin,
+                            ymax=ymax,
+                            per_max=per_max,
+                        )
+                    ]
+                    * angles.shape[0],
+                    color=color,
+                    lw=lw,
+                    ls=ls,
+                    zorder=zorder,
+                )
+
+        def plot_perc_label(
+            vals, lbls, angle=None, ymin=None, ymax=None, per_max=None, ax=ax_bar
+        ):
+            for val, lbl in zip(vals, lbls):
+                ax.text(
+                    x=angle,
+                    y=get_perc_line(
+                        val,
+                        ymin=ymin,
+                        ymax=ymax,
+                        per_max=per_max,
+                    ),
+                    s=lbl,
+                    ha="right",
+                    va="center",
+                    fontsize=8,
+                    color="k",
+                    rotation=np.rad2deg(angle) - 90,
+                    rotation_mode="anchor",
+                )
+
+        # ==========
+        # Parameters
+        # ==========
+        delta_ax_size_donuts = -0.05
+        ax_size_bar = 1.15
+        pad_bar_label = 0.05
+        bar_angle_start = np.pi / 10
+        bar_angle_span = np.pi / 2 - bar_angle_start
+
+        # Start plot
+        # ==========
+        if df_lia_area.name in df_veget_surf.index:
+            # Get data
+            # --------
+            df_bars_area = df_veget_surf.loc[
+                df_veget_surf.index == df_lia_area.name
+            ].iloc[0]
+            df_bars_area_percent = df_veget_percent.loc[
+                df_veget_percent.index == df_lia_area.name
+            ].iloc[0]
+
+            df_bars_area = df_bars_area[
+                [
+                    "LC_6",
+                    "LC_1",
+                    "LC_2",
+                    "LC_3",
+                ]
+            ]
+
+            df_bars_area_percent = df_bars_area_percent[
+                [
+                    "LC_6",
+                    "LC_1",
+                    "LC_2",
+                    "LC_3",
+                ]
+            ]
+
+            colors = [
+                lcmap.get_color_of_code(int(code[-1])) for code in df_bars_area.index
+            ]
+
+            # Define the angles
+            # -----------------
+            indexes = list(range(0, len(df_bars_area.index)))
+            width = bar_angle_span / len(df_bars_area.index)
+            angles = [bar_angle_start + element * (width) for element in indexes]
+
+            # Scale and offset size of each bar
+            # ---------------------------------
+            y_lower_limit = pie_size - delta_ax_size_donuts  # bottom of bars
+            if df_bars_area.name != row_total_alps:
+                df_bars_max = (
+                    df_veget_surf.loc[df_veget_surf.index == "CH"].iloc[0]
+                ).max()
+            else:
+                df_bars_max = (
+                    df_veget_surf.loc[df_veget_surf.index == row_total_alps].iloc[0]
+                ).max()
+
+            heights = df_bars_area.values * (ax_size_bar - y_lower_limit) / df_bars_max
+
+            # Add lines percentage
+            # --------------------
+            per_lines = np.linspace(angles[0], angles[-1] + width + 0.01, num=50)
+            df_bars_area_percent_max = df_bars_area_percent.max()
+
+            # Plot percentage lines
+            # ---------------------
+            if df_bars_area.name in ["FR", "IT"]:
+                plot_perc_lines(
+                    vals=[20, 60],
+                    angles=per_lines,
+                    ymin=y_lower_limit,
+                    ymax=heights.max(),
+                    per_max=df_bars_area_percent_max,
+                )
+                plot_perc_label(
+                    vals=[20, 60],
+                    lbls=["20  ", "60%  "],
+                    angle=angles[-1] + width,
+                    ymin=y_lower_limit,
+                    ymax=heights.max(),
+                    per_max=df_bars_area_percent_max,
+                )
+            else:
+                plot_perc_lines(
+                    vals=[5, 20, 60],
+                    angles=per_lines,
+                    ymin=y_lower_limit,
+                    ymax=heights.max(),
+                    per_max=df_bars_area_percent_max,
+                )
+                plot_perc_label(
+                    vals=[5, 20, 60],
+                    lbls=["5  ", "20  ", "60%  "],
+                    angle=angles[-1] + width,
+                    ymin=y_lower_limit,
+                    ymax=heights.max(),
+                    per_max=df_bars_area_percent_max,
+                )
+
+            # Draw bars
+            # ---------
+            bars = ax_bar.bar(
+                x=angles,
+                height=heights,
+                width=width,
+                bottom=y_lower_limit,
+                align="edge",
+                color=colors,
+            )
+
+            # Add labels
+            # ----------
+            for angle, height, label, index in zip(
+                angles, heights, df_bars_area.values, indexes
+            ):
+                if index == 0:
+                    the_lbl = f"{label:.1f}\n[km²]"
+                else:
+                    the_lbl = f"{label:.1f}\n"
+                ax_bar.text(
+                    x=angle + width / 2.0,
+                    y=heights.max() + y_lower_limit + pad_bar_label,
+                    s=the_lbl,
+                    ha="left",
+                    va="center",
+                    fontsize=12,
+                    rotation=np.rad2deg(angle + width / 2.0),
+                    rotation_mode="anchor",
+                )
+
+            # Add connection line
+            # -------------------
+            bottom_ls = "-"
+            bottom_lw = 1.8
+            bottom_color = "k"
+
+            p = wedges[-1]  # Outter pie / veget part
+            line_start_angle = (np.deg2rad(p.theta2 // 360) + bar_angle_start) / 2
+            bottom_line = np.linspace(line_start_angle, angles[-1] + width, num=50)
+
+            # Bottom arc
+            plot_perc_lines(
+                vals=[0],
+                angles=bottom_line,
+                ymin=y_lower_limit - 0.005,
+                ymax=heights.max(),
+                per_max=df_bars_area_percent_max,
+                color=bottom_color,
+                lw=bottom_lw,
+                ls=bottom_ls,
+            )
+
+            # Straigth line
+            y_bottom_line = get_perc_line(
+                val=0,
+                ymin=y_lower_limit - 0.005,
+                ymax=heights.max(),
+                per_max=df_bars_area_percent_max,
+            )
+            ax_bar.annotate(
+                "",
+                # The pie veget / arrow
+                xy=(
+                    0,
+                    y_bottom_line - wedge_size_ext / 2.5,
+                ),
+                # The arc bottom line / no arrow
+                xytext=(
+                    line_start_angle,
+                    y_bottom_line,
+                ),
+                xycoords="data",
+                textcoords="data",
+                arrowprops=dict(
+                    arrowstyle="-|>",
+                    ls=bottom_ls,
+                    lw=bottom_lw,
+                    color=bottom_color,
+                    patchB=None,
+                    shrinkA=0,
+                    shrinkB=0,
+                    connectionstyle="arc",
+                ),
+            )
+
+        # Connection line vegetation for no vegetation
+        # --------------------------------------------
+        else:
+            # Bottom arc
+            plot_perc_lines(
+                vals=[0],
+                angles=bottom_line,
+                ymin=y_lower_limit + wedge_size / 1.2,
+                ymax=heights.max(),
+                per_max=df_bars_area_percent_max,
+                color=bottom_color,
+                lw=bottom_lw,
+                ls=bottom_ls,
+            )
+
+            # Straigth line
+            y_bottom_line = get_perc_line(
+                val=0,
+                ymin=y_lower_limit,
+                ymax=heights.max(),
+                per_max=df_bars_area_percent_max,
+            )
+            ax_bar.annotate(
+                "",
+                # The pie veget / arrow
+                xy=(
+                    0,
+                    y_bottom_line,
+                ),
+                # The arc bottom line / no arrow
+                xytext=(
+                    line_start_angle,
+                    y_lower_limit + wedge_size / 1.2,
+                ),
+                xycoords="data",
+                textcoords="data",
+                arrowprops=dict(
+                    arrowstyle="-|>",
+                    ls=bottom_ls,
+                    lw=bottom_lw,
+                    color=bottom_color,
+                    patchB=None,
+                    shrinkA=0,
+                    shrinkB=0,
+                    connectionstyle="arc",
+                ),
+            )
+
+            # Text
+            # ----
+            ax_bar.text(
+                bar_angle_span / 2.0,
+                pie_size_ext + 0.4,
+                "No vegetation\nNo water",
+                style="italic",
+                fontsize=11,
+                ha="right",
+            )
+
+        if save_dir is not None:
+            plt.savefig(
+                os.path.join(
+                    save_dir, f"donuts_{df_lia_area.name}_{save_name_ext}.png"
+                ),
+                dpi=300,
                 transparent=True,
             )
 
