@@ -458,7 +458,7 @@ def plot_errorMatrix(errorMatrix, lcmap, label=None, save_dir=None, save_name=No
 
     cbar = g1.collections[0].colorbar
     cbar.set_ticks([0, 50, 100])
-    cbar.set_label(f"[%] of correct prediction")
+    cbar.set_label(f"[%] of prediction")
 
     ax2.tick_params(axis="x", rotation=40)
     ax2.tick_params(axis="y", rotation=20)
