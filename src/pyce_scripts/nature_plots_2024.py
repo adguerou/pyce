@@ -1062,12 +1062,20 @@ def plot_donuts_v2(
         #                          Deglaciated plot
         # =============================================================================
         df_deglaciated_area = df_deglaciated_surf.iloc[area]
+        df_deglaciated_perc_area = df_deglaciated_perc.iloc[area]
 
         outer_vals = [
             df_lia_area[col_snow_and_ice],  # snow
             df_deglaciated_area[col_aquatic],  # water
             df_deglaciated_area[col_rocks],  # rocks
             df_deglaciated_area[col_veget],  # veget
+        ]
+
+        outer_perc = [
+            0,  # snow
+            df_deglaciated_perc_area[col_aquatic],  # water
+            df_deglaciated_perc_area[col_rocks],  # rocks
+            df_deglaciated_perc_area[col_veget],  # veget
         ]
 
         outer_colors = [
@@ -1097,6 +1105,8 @@ def plot_donuts_v2(
             outer_vals[index_water] += shift_water  # add 1% to water
             outer_vals[index_rocks] -= shift_water  # remove 1% to rocks
 
+        # When no vegetation nor water
+        # ----------------------------
         if outer_vals[index_rocks] / df_lia_area[col_country_total] == 1:
             outer_vals = [outer_vals[index_rocks]]
             outer_colors = [outer_colors[index_rocks]]
@@ -1121,28 +1131,18 @@ def plot_donuts_v2(
         if df_lia_area.name in df_veget_surf.index:
             wedges[0].update({"edgecolor": "#ffffff00"})
 
-        # Put correct values for snow and ice
-        # -----------------------------------
+        # Put correct values for rocks
+        # ----------------------------
         if shift_water != 0:
-            for at, sign in zip(
-                [autotexts[index_water], autotexts[index_rocks]], [-1, 1]
-            ):
-                orig_surf = (
-                    float(at.get_text()[1:-2]) * df_lia_area[col_country_total] / 100
-                    + sign * shift_water
-                )
-                orig_percent = orig_surf / df_lia_area[col_country_total] * 100
-                at.set_text(f"({orig_percent:.1f}%)")
+            outer_vals[index_water] -= shift_water  # remove 1% to water
+            outer_vals[index_rocks] += shift_water  # add 1% to rocks
 
-        # Remove values for snow & ice
-        autotexts[0].update({"text": ""})
-        labels[0].update({"text": ""})
-
-        # Update surface / percentage
-        # ---------------------------
-        for at, lbl in zip(autotexts, labels):
+        # Update percentage without snow cover / change surface values for water_shift < 1%
+        # -----------------------------------------------------------------------------
+        for at, lbl, perc, val in zip(autotexts, labels, outer_perc, outer_vals):
             at.update(
                 {
+                    "text": f"({perc:.1f}%)",
                     "fontsize": 10,
                     "fontstyle": "italic",
                     "horizontalalignment": "center",
@@ -1151,12 +1151,17 @@ def plot_donuts_v2(
             )
             lbl.update(
                 {
+                    "text": f"{val:.0f}",
                     "fontsize": 13,
                     "color": "k",
                     "horizontalalignment": "center",
                     "verticalalignment": "center",
                 }
             )
+
+        # Remove values for snow & ice
+        autotexts[0].update({"text": ""})
+        labels[0].update({"text": ""})
 
         if df_lia_area.name in df_veget_surf.index:
             # Move water
@@ -1316,7 +1321,7 @@ def plot_donuts_v2(
 
             # Plot percentage lines
             # ---------------------
-            if df_bars_area.name in ["FR", "IT"]:
+            if df_bars_area.name in ["FR"]:
                 plot_perc_lines(
                     vals=[20, 60],
                     angles=per_lines,
@@ -1332,17 +1337,41 @@ def plot_donuts_v2(
                     ymax=heights.max(),
                     per_max=df_bars_area_percent_max,
                 )
-            else:
+            elif df_bars_area.name == "ALPS":
                 plot_perc_lines(
-                    vals=[5, 20, 60],
+                    vals=[
+                        5,
+                        20,
+                        65,
+                    ],  # put 65 so the line is not on the border and not visible
                     angles=per_lines,
                     ymin=y_lower_limit,
                     ymax=heights.max(),
                     per_max=df_bars_area_percent_max,
                 )
                 plot_perc_label(
-                    vals=[5, 20, 60],
-                    lbls=["5  ", "20  ", "60%  "],
+                    vals=[
+                        5,
+                        20,
+                        65,
+                    ],  # put 65 so the line is not on the border and not visible
+                    lbls=["5  ", "20  ", "70%  "],
+                    angle=angles[-1] + width,
+                    ymin=y_lower_limit,
+                    ymax=heights.max(),
+                    per_max=df_bars_area_percent_max,
+                )
+            else:
+                plot_perc_lines(
+                    vals=[20, 65],
+                    angles=per_lines,
+                    ymin=y_lower_limit,
+                    ymax=heights.max(),
+                    per_max=df_bars_area_percent_max,
+                )
+                plot_perc_label(
+                    vals=[20, 65],
+                    lbls=["20  ", "70%  "],
                     angle=angles[-1] + width,
                     ymin=y_lower_limit,
                     ymax=heights.max(),
@@ -1929,7 +1958,7 @@ def plot_donuts_classic(
             )
 
 
-def plot_violin(df, lcmap, save_dir, save_name):
+def plot_violin(df, lcmap, x_violin="altitude", save_dir=None, save_name=None):
     """
 
     :param df:
@@ -1943,7 +1972,7 @@ def plot_violin(df, lcmap, save_dir, save_name):
     # ===========================
     lcmap_reindex = lcmap.reindex(reverse=True, in_place=False)
     lcmap_reindex.remove_item(
-        col_name="Code", col_val=[9], in_place=True
+        col_name="Code", col_val=[9, 8], in_place=True
     )  # Do it after reindex otherwise bug
 
     # Figure
@@ -1953,7 +1982,7 @@ def plot_violin(df, lcmap, save_dir, save_name):
     # Plot
     ax = sbn.violinplot(
         data=df,
-        x="altitude",
+        x=x_violin,
         y="landcover",
         orient="horizontal",
         hue="lia",
@@ -1982,7 +2011,7 @@ def plot_violin(df, lcmap, save_dir, save_name):
     ):
         alpha = 1
         if ind % 2 != 0:
-            alpha = 0.4
+            alpha = 0.3
         violin.set_facecolor(color)
         violin.set_alpha(alpha=alpha)
         handles.append(
@@ -1992,7 +2021,10 @@ def plot_violin(df, lcmap, save_dir, save_name):
         )
 
     # Legend
-    labels = [lbl.replace(" ", "\n") for lbl in lcmap_reindex.get_type()]
+    labels = [
+        lbl.replace(" v", "\nv").replace("& s", "&\ns")
+        for lbl in lcmap_reindex.get_type()
+    ]
     ax.legend(
         handles=[tuple(handles[::2]), tuple(handles[1::2])],
         labels=["LIA", "Outside LIA"],
@@ -2003,9 +2035,25 @@ def plot_violin(df, lcmap, save_dir, save_name):
         handler_map={tuple: HandlerTuple(ndivide=None, pad=0)},
     )
 
-    ax.set_xlabel("Altitude [m]", fontsize=14, labelpad=10)
+    ax.set_xlabel("Altitude [m a.s.l]", fontsize=14, labelpad=10)
     ax.set_yticklabels(labels)
     ax.set(ylabel=None)
+
+    # Add altitude differences
+    # ========================
+    for l, ind in zip(ax.lines, range(np.size(ax.lines))):
+        if (ind + 1) % 6 == 1:
+            delta_alt = l.get_data()[0][0] - ax.lines[ind + 3].get_data()[0][0]
+            if delta_alt > 0:
+                sign_delta = "+"
+            else:
+                sign_delta = ""
+            ax.text(
+                l.get_data()[0][0] - 500,
+                l.get_data()[1][l.get_data()[1].nonzero()][0] + 0.1,
+                f"{sign_delta}{delta_alt:.0f} m",
+                fontsize=8,
+            )
 
     # Add percentage for each violin
     # ==============================
@@ -2048,7 +2096,6 @@ def plot_violin(df, lcmap, save_dir, save_name):
     )
 
     # Plot
-    # ====
     x_pos = (
         df.groupby(["landcover"])["altitude"]
         .max()
