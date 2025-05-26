@@ -149,7 +149,7 @@ def select_poly_from_multipoly(
 # =====================================================================================================================
 #                                               GEODATAFRAMES
 # =====================================================================================================================
-def df_to_gdf(df: pd.DataFrame, x_col: str, y_col: str, crs: str):
+def df_to_gdf(df: pd.DataFrame, x_col: str, y_col: str, crs: str, drop_xy=False):
     """
     Transform a dataframe containing x and y coordinates to
     a GeoDataFrame with points geometry
@@ -158,10 +158,17 @@ def df_to_gdf(df: pd.DataFrame, x_col: str, y_col: str, crs: str):
     :param x_col: x column name
     :param y_col: y column name
     :param crs: crs projection
+    :param drop_xy: If True, drop the orginal columns of x_col and y_col
     :return: geodataframe
     """
+
+    if drop_xy:
+        df_out = df.drop(columns=[x_col, y_col])
+    else:
+        df_out = df
+
     return gpd.GeoDataFrame(
-        df, geometry=gpd.points_from_xy(df[x_col], df[y_col])
+        df_out, geometry=gpd.points_from_xy(df[x_col], df[y_col])
     ).set_crs(crs)
 
 
