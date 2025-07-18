@@ -285,6 +285,7 @@ def rf_circular(
     # Final output list
     rf_proba = []  # Classif proba
     error_matrix = []  # Accuracy of validation sample for each RF
+    calibration_scores = []  # Proba value of the true class for the calibration set
 
     # Indices list of the circular areas
     list_rf_id = list(range(1, n_areas + 1))
@@ -318,11 +319,33 @@ def rf_circular(
             classified_validation.errorMatrix(label_classif_col, "classification")
         )
 
+        #### TEST #######
+        # Get the proba value from the calibration set
+        calibration_proba = sample_validation.classify(
+            classifier.setOutputMode("MULTIPROBABILITY")
+        )
+        calibration_scores.append(calibration_proba)
+
+    # Function to select scores on df
+    def sel_scores(row):
+        return row["classification"][row["landcover"]]
+
+    # Get the scores (the proba of the true class)
+    df_scores = []
+    for rf_scores in calibration_scores:
+        gdf_rf_scores = geemap.ee_to_gdf(rf_scores)
+        gdf_rf_scores["scores"] = gdf_rf_scores.apply(
+            lambda row: sel_scores(row), axis=1
+        )
+        df_scores.append(gdf_rf_scores["scores"])
+    df_scores = pd.concat(df_scores)
+    #### TEST #######
+
     # Get the mean proba for each landcover class from the circular RF
     rf_mean = ee.ImageCollection.fromImages(rf_proba).mean()
     rf_std = ee.ImageCollection.fromImages(rf_proba).reduce(ee.Reducer.stdDev())
 
-    return rf_mean, rf_std, error_matrix
+    return rf_mean, rf_std, error_matrix, df_scores
 
 
 def classify(
