@@ -68,7 +68,7 @@ def _ee_to_gdf_dask(
     gdf_subset = geemap.ee_to_gdf(subset)
 
     if crs is not None:
-        gdf_subset.set_crs(crs, inplace=True)
+        gdf_subset.to_crs(crs, inplace=True)
 
     return gdf_subset
 
@@ -99,7 +99,12 @@ def ee_to_gdf_by_slice(
 
     gdf_subsets = []
 
+    # Set max_size if not set in parameters
     if max_size is None:
+        max_size = fc.size().getInfo()
+
+    # Ensure not to look for empty feature
+    if max_size > fc.size().getInfo():
         max_size = fc.size().getInfo()
 
     # Define number of chunk depending
@@ -123,7 +128,7 @@ def ee_to_gdf_by_slice(
     gdf.reset_index(inplace=True)
 
     if crs is not None:
-        gdf.set_crs(crs, inplace=True)
+        gdf.to_crs(crs, inplace=True)
 
     return gdf
 
@@ -319,13 +324,16 @@ def rf_circular(
             classified_validation.errorMatrix(label_classif_col, "classification")
         )
 
-        #### TEST #######
+        # Used for uncertainty estimation
+        # -------------------------------
         # Get the proba value from the calibration set
         calibration_proba = sample_validation.classify(
             classifier.setOutputMode("MULTIPROBABILITY")
         )
         calibration_scores.append(calibration_proba)
 
+    # UNCERTAINTIES
+    # --------------
     # Function to select scores on df
     def sel_scores(row):
         return row["classification"][row["landcover"]]
@@ -333,13 +341,11 @@ def rf_circular(
     # Get the scores (the proba of the true class)
     df_scores = []
     for rf_scores in calibration_scores:
-        gdf_rf_scores = geemap.ee_to_gdf(rf_scores)
-        gdf_rf_scores["scores"] = gdf_rf_scores.apply(
-            lambda row: sel_scores(row), axis=1
-        )
-        df_scores.append(gdf_rf_scores["scores"])
+        df_rf_scores = geemap.ee_to_df(rf_scores)
+        df_rf_scores["scores"] = df_rf_scores.apply(lambda row: sel_scores(row), axis=1)
+        df_scores.append(df_rf_scores["scores"])
     df_scores = pd.concat(df_scores)
-    #### TEST #######
+    # -----------------
 
     # Get the mean proba for each landcover class from the circular RF
     rf_mean = ee.ImageCollection.fromImages(rf_proba).mean()
