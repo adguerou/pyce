@@ -1,4 +1,5 @@
 import os
+from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -7,171 +8,38 @@ from matplotlib import pyplot as plt
 from matplotlib.collections import PolyCollection
 from matplotlib.legend_handler import HandlerTuple
 from matplotlib.ticker import MultipleLocator
-from pyce.tools import lc_mapping
 from pyce.tools.lc_mapping import LandCoverMap
 
 from pyce_scripts import lc_distrib
 
 
-def get_stats_table(
+def get_fig1_numbers(
     df_stats,
     round_dec: int = None,
-    col_name_country="Country",
-    col_name_glacier="glacier",
-    col_name_snow_and_ice="snow_and_ice",
-    col_name_veget="veget",
-    col_name_veget_and_water="vegetation_and_water",
-    col_name_landcover="landcover",
-    col_name_donuts_pieces="landcover",
-    val_rocks=0,
-    val_snow=4,
-    val_water=5,
-    slope_correction=True,
-):
-    # ==================
-    # GET DONUTS NUMBERS
-    # ==================
-    df = df_stats.copy()
-
-    # Define categories for donuts
-    # ----------------------------
-    # Snow and ice: glacier + snow on deiced area
-    df[col_name_snow_and_ice] = df[col_name_glacier]
-    df.loc[df[col_name_landcover] == val_snow, col_name_snow_and_ice] = True
-
-    # Water and veget
-    df[col_name_veget_and_water] = df[col_name_veget]
-    df.loc[df[col_name_landcover] == val_water, col_name_veget_and_water] = True
-
-    # Get surfaces
-    # ------------
-    surf_country = lc_distrib.get_lc_surface(
-        df,
-        groupby=[
-            col_name_country,
-            col_name_snow_and_ice,
-            col_name_veget_and_water,
-            col_name_landcover,
-        ],
-        round_dec=round_dec,
-        add_total=True,
-        slope_correction=slope_correction,
-    )
-
-    # Add Alps numbers
-    # ----------------
-    df_surf = pd.concat(
-        [
-            surf_country,
-            pd.concat(
-                [surf_country.groupby(level=[1, 2]).sum()],
-                keys=["Alps"],
-                names=[col_name_country],
-            ),
-        ]
-    )
-
-    # Get percentage
-    # --------------
-    df_surf["percent"] = (
-        df_surf["Total_LC"].div(df_surf.groupby([col_name_country])["Total_LC"].sum())
-        * 100
-    )
-
-    # Reformat table
-    # --------------
-    df_surf.reset_index(inplace=True)
-
-    # Add column corresponding to final categories: snow&ice, rocks, water&veget
-    df_surf.loc[
-        df_surf[col_name_snow_and_ice] == True,
-        col_name_donuts_pieces,
-    ] = col_name_snow_and_ice
-    df_surf.loc[
-        (df_surf[col_name_snow_and_ice] == False)
-        & (df_surf[col_name_veget_and_water] == False),
-        col_name_donuts_pieces,
-    ] = "rocks"
-    df_surf.loc[
-        (df_surf[col_name_snow_and_ice] == False)
-        & (df_surf[col_name_veget_and_water] == True),
-        col_name_donuts_pieces,
-    ] = col_name_veget_and_water
-
-    # Reset multi-index to Country and categories + selection columns
-    donuts_table = df_surf.set_index([col_name_country, col_name_donuts_pieces])[
-        ["Total_LC", "percent"]
-    ].rename(columns={"Total_LC": "Surface"})
-
-    # Add total surface by country
-    donuts_table = pd.concat(
-        [
-            donuts_table,
-            pd.concat(
-                [donuts_table.groupby(level=0).sum()],
-                keys=["Total"],
-                names=[col_name_donuts_pieces],
-            ).reorder_levels([col_name_country, col_name_donuts_pieces]),
-        ]
-    ).sort_index()
-
-    # ==================
-    # GET BAR NUMBERS
-    # ==================
-    # Get veget and water only with LC_XX values
-    bar_table = (
-        df_surf.loc[df_surf[col_name_donuts_pieces] == col_name_veget_and_water]
-        .reset_index(drop=True)
-        .drop(
-            columns=[
-                f"LC_{val_rocks}",
-                f"LC_{val_snow}",
-                col_name_snow_and_ice,
-                col_name_veget_and_water,
-                col_name_donuts_pieces,
-                "Total_LC",
-                "percent",
-            ]
-        )
-    )
-
-    # Reindex on Country + stack to transform column to lines
-    bar_table = pd.DataFrame(
-        bar_table.set_index([col_name_country]).stack(future_stack=True)
-    ).rename(columns={0: "Surface"})
-
-    # Add percent values
-    bar_table["percent"] = (
-        bar_table.div(bar_table.groupby([col_name_country]).sum()) * 100
-    )
-
-    return donuts_table, bar_table
-
-
-def get_fig1_tables(
-    df_stats,
-    round_dec: int = None,
-    col_name_country="Country",
-    col_name_snow_and_ice="snow_and_ice",
-    col_name_deglaciated="deglaciated",
-    col_name_aquatic="aquatic",
-    col_name_veget="veget",
-    col_name_rocks="rocks",
+    col_name_country: str = "Country",
+    col_name_snow_and_ice: str = "snow_and_ice",
+    col_name_deglaciated: str = "deglaciated",
+    col_name_aquatic: str = "aquatic",
+    col_name_veget: str = "veget",
+    col_name_rocks: str = "rocks",
     col_name_landcover="landcover",
     val_rocks=0,
     val_snow=4,
     val_water=5,
     slope_correction=False,
 ):
-    def _get_surf_and_perc(
-        df, groupby=[col_name_country, "category"], columns="category"
-    ):
+    def _get_surf_and_perc(df, groupby=None, columns=None, round=round_dec):
+        if columns is None:
+            columns = ["category"]
+        if groupby is None:
+            groupby = [col_name_country, "category"]
+
         surf = lc_distrib.get_lc_surface(
             df,
             groupby=groupby,
-            index=col_name_country,
-            columns=columns,
-            round_dec=round_dec,
+            reshape_index=[col_name_country],
+            reshape_columns=columns,
+            round_dec=round,
             add_total=True,
             slope_correction=slope_correction,
         )
@@ -192,7 +60,8 @@ def get_fig1_tables(
             .reset_index()
             .set_index([col_name_country, "metric"])
             .sort_index()
-        )
+        ).round(round_dec)
+
         return surf_and_perc
 
     # Copy dataframe and create category column for which we derive stats
@@ -211,7 +80,7 @@ def get_fig1_tables(
 
     # Deglaciated
     df_lia.loc[
-        (df_lia.glacier == False) & (df_lia.landcover != 4), "category"
+        (df_lia.glacier == False) & (df_lia[col_name_landcover] != 4), "category"
     ] = col_name_deglaciated
 
     # Get surfaces and percentages
@@ -220,7 +89,9 @@ def get_fig1_tables(
 
     # 2. Statistics over DEGLACIATED area
     # ===================================
-    df_deglaciated = df_lia.loc[(df_lia.glacier == False) & (df_lia.landcover != 4)]
+    df_deglaciated = df_lia.loc[
+        (df_lia.glacier == False) & (df_lia[col_name_landcover] != 4)
+    ]
     df_deglaciated.loc[:, "category"] = None
 
     # Create categories
@@ -253,6 +124,202 @@ def get_fig1_tables(
     )
 
     return surfaces_lia, surfaces_deglaciated, surfaces_veget
+
+
+def get_table_SI_1(
+    df,
+    lcmap: LandCoverMap,
+    lcmap_deglaciated_name: Union[None, str] = "deglaciated",
+    lcmap_glacier_name="snow & ice",
+    lcmap_veget_name="vegetation",
+    lcmap_rocks_name="rocks & sediments",
+    lcmap_water_name="water",
+    veget_codes=[1, 2, 3, 6],
+):
+    # Test on names
+    if not lcmap_deglaciated_name in lcmap.df["Type"].values:
+        raise IOError(f"{lcmap_deglaciated_name} not in LandCoverMap")
+    if lcmap_glacier_name is not None:
+        if not (lcmap_glacier_name in lcmap.df["Type"].values):
+            raise IOError(f"{lcmap_glacier_name} not in LandCoverMap")
+    if not (lcmap_veget_name in lcmap.df["Type"].values):
+        raise IOError(f"{lcmap_veget_name} not in LandCoverMap")
+
+    # ==========
+    #  SURFACES
+    # ==========
+    # Surface by country and landcovers
+    df_surf = lc_distrib.get_lc_surface(df, groupby=["Country", "LC"])
+
+    # Deglaciated
+    if lcmap_glacier_name is None:
+        not_deg_cols = ["Total_LC"]
+    else:
+        not_deg_cols = [f"LC_{lcmap.get_code_of_type(lcmap_glacier_name)}", "Total_LC"]
+
+    df_surf[f"LC_{lcmap.get_code_of_type(lcmap_deglaciated_name)}"] = df_surf[
+        df_surf.columns[~df_surf.columns.isin(not_deg_cols)]
+    ].sum(axis=1)
+
+    # Vegetation
+    lc_veget = [f"LC_{code}" for code in veget_codes]
+    df_surf[f"LC_{lcmap.get_code_of_type(lcmap_veget_name)}"] = df_surf[
+        df_surf.columns[df_surf.columns.isin(lc_veget)]
+    ].sum(axis=1)
+
+    # Add line for ALPS / Z_ALPS to keep alps at last row
+    df_surf.loc["Z_ALPS"] = df_surf.sum()
+
+    # Reorder columns
+    surface_SI_1 = df_surf[["Total_LC"] + [f"LC_{code}" for code in lcmap.get_code()]]
+
+    # ==========
+    # PERCENTAGE
+    # ==========
+    percent_lia = surface_SI_1.div(surface_SI_1["Total_LC"], axis=0) * 100
+    percent_lia = percent_lia.map("{:.1f}%".format)
+    percent_lia["Total_LC"] = np.nan
+    percent_lia["zone"] = "1_lia"
+
+    # Deglaciated
+    # -----------
+    percent_deiced = (
+        surface_SI_1.div(
+            surface_SI_1[[f"LC_{lcmap.get_code_of_type(lcmap_deglaciated_name)}"]].sum(
+                axis=1
+            ),
+            axis=0,
+        )
+        * 100
+    )
+    percent_deiced = percent_deiced.map("{:.1f}%".format)
+    if lcmap_glacier_name is not None:
+        percent_deiced[f"LC_{lcmap.get_code_of_type(lcmap_glacier_name)}"] = np.nan
+    percent_deiced["Total_LC"] = np.nan
+    percent_deiced["zone"] = "2_deiced"
+
+    # Vegetation
+    # -----------
+    percent_veget = (
+        surface_SI_1.div(
+            surface_SI_1[[f"LC_{lcmap.get_code_of_type(lcmap_veget_name)}"]].sum(
+                axis=1
+            ),
+            axis=0,
+        )
+        * 100
+    )
+    percent_veget = percent_veget.map("{:.1f}%".format)
+
+    if lcmap_glacier_name is None:
+        not_veget_cols = [
+            f"LC_{lcmap.get_code_of_type(lcmap_deglaciated_name)}",
+            f"LC_{lcmap.get_code_of_type(lcmap_rocks_name)}",
+            f"LC_{lcmap.get_code_of_type(lcmap_water_name)}",
+        ]
+    else:
+        not_veget_cols = [
+            f"LC_{lcmap.get_code_of_type(lcmap_glacier_name)}",
+            f"LC_{lcmap.get_code_of_type(lcmap_deglaciated_name)}",
+            f"LC_{lcmap.get_code_of_type(lcmap_rocks_name)}",
+            f"LC_{lcmap.get_code_of_type(lcmap_water_name)}",
+        ]
+    percent_veget[not_veget_cols] = np.nan
+    percent_veget.loc[percent_veget.index == "SI"] = np.nan
+    percent_veget["Total_LC"] = np.nan
+    percent_veget["zone"] = "3_veget"
+
+    # Concat surface and percentage + rename Alps
+    # ===========================================
+    surface_SI_1 = surface_SI_1.map("{:.1f}".format)
+    surface_SI_1 = surface_SI_1.assign(zone="0_lia")
+
+    table_SI_1 = (
+        pd.concat([surface_SI_1, percent_lia, percent_deiced, percent_veget])
+        .reset_index()
+        .set_index(["Country", "zone"])
+        .sort_index()
+        .rename(
+            index={
+                "Z_ALPS": "ALPS",
+                "0_lia": "[km²]",
+                "1_lia": "LIA",
+                "2_deiced": "Deglaciated",
+                "3_veget": "Vegetation",
+            },
+        )
+    ).fillna("-")
+
+    def rename_lc_cols(cols):
+        mydict = {}
+        for col in cols:
+            mydict[col] = lcmap.get_type_of_code(int(col[-1]))
+        return mydict
+
+    return table_SI_1.rename(
+        columns={**{"Total_LC": "LIA"}, **rename_lc_cols(table_SI_1.columns[1:])}
+    )
+
+
+def get_table_SI_2(df_lia, df_buffer, lcmap_lia, lcmap_buffer):
+    # Get percentage of buffer through TABLE SI 1
+    # ===========================================
+    table_buffer = get_table_SI_1(df_buffer, lcmap_buffer, lcmap_glacier_name=None)
+
+    table_buffer_SI_2 = table_buffer.reset_index()
+    table_buffer_SI_2 = (
+        table_buffer_SI_2.drop(
+            table_buffer_SI_2.loc[table_buffer_SI_2.zone == "LIA"].index
+        )
+        .drop(table_buffer_SI_2.loc[table_buffer_SI_2.zone == "[km²]"].index)
+        .drop(columns=["deglaciated", "LIA"])
+        .assign(LIA="Out")
+        .set_index(["Country"])
+        .rename(
+            index={
+                "ALPS": "Z_ALPS",
+            }
+        )
+    )
+
+    # Get percentage of LIA through TABLE SI 1
+    # ===========================================
+    table_lia = get_table_SI_1(df_lia, lcmap_lia)
+
+    table_lia_SI_2 = table_lia.reset_index()
+    table_lia_SI_2 = (
+        table_lia_SI_2.drop(table_lia_SI_2.loc[table_lia_SI_2.zone == "LIA"].index)
+        .drop(table_lia_SI_2.loc[table_lia_SI_2.zone == "[km²]"].index)
+        .drop(columns=["deglaciated", "LIA", "snow & ice"])
+        .assign(LIA="In")
+        .set_index(["Country"])
+        .rename(
+            index={
+                "ALPS": "Z_ALPS",
+            }
+        )
+    )
+
+    # Concat both
+    # ===========
+    table_SI_2 = (
+        pd.concat([table_lia_SI_2, table_buffer_SI_2])
+        .reset_index()
+        .set_index(
+            [
+                "Country",
+                "zone",
+                "LIA",
+            ]
+        )
+        .sort_index()
+        .rename(
+            index={
+                "Z_ALPS": "ALPS",
+            }
+        )
+    )
+    return table_SI_2
 
 
 def plot_donuts(
@@ -1010,7 +1077,9 @@ def plot_donuts_v2(
         # ---------------------------
         # Remove 0 km
         for at, lbl in zip(autotexts, labels):
-            if float(at.get_text()[1:-2]) != 0.0:
+            if (
+                float(at.get_text()[1:-2]) != 0.0
+            ):  # [1:-2] to remove parenthesis from returned str
                 at.update(
                     {
                         "fontsize": 10,
@@ -1044,19 +1113,31 @@ def plot_donuts_v2(
             lbl_pct.update(dict(x=x, y=y, rotation=rot))
 
         # ---------------------------------------------------------------------------
-
-        # Move snow&ice
-        update_lbl_pct(wedges[0], labels[0], delta_ang=10, delta_dist=-0.02)
-        update_lbl_pct(wedges[0], autotexts[0], delta_ang=-40, delta_dist=0, rot=-45)
+        # Move snow&ice except very low snow & ice (DE)
+        if outer_vals[0] >= 1:
+            update_lbl_pct(
+                wedges[0], labels[0], delta_ang=10, delta_dist=-0.02
+            )  # Surface
+            update_lbl_pct(
+                wedges[0], autotexts[0], delta_ang=-40, delta_dist=0, rot=-45
+            )  # percentage
+        else:
+            update_lbl_pct(
+                wedges[0], autotexts[0], delta_ang=0, delta_dist=0.35, rot=0
+            )  # percentage
+            if outer_vals[0] != 0.0:
+                labels[0].update({"text": "<1"})  # surface
 
         # Move deglaciated
-        if df_lia_area.name in df_veget_surf.index:
+        if (df_lia_area.name != "SI") & (df_lia_area.name != "DE"):
             update_lbl_pct(wedges[1], labels[1], delta_ang=0, delta_dist=0.0)
             update_lbl_pct(wedges[1], autotexts[1], delta_ang=55, delta_dist=0, rot=40)
-        else:
+        elif df_lia_area.name == "SI":
             update_lbl_pct(
                 wedges[1], autotexts[1], delta_ang=0, delta_dist=0.25, rot=30
             )
+        elif df_lia_area.name == "DE":
+            update_lbl_pct(wedges[1], autotexts[1], delta_ang=80, delta_dist=0.0, rot=0)
 
         # ============================================================================
         #                          Deglaciated plot
@@ -1164,17 +1245,37 @@ def plot_donuts_v2(
         labels[0].update({"text": ""})
 
         if df_lia_area.name in df_veget_surf.index:
-            # Move water
-            update_lbl_pct(wedges[1], labels[1], delta_ang=0, delta_dist=0.3)
-            update_lbl_pct(wedges[1], autotexts[1], delta_ang=8, delta_dist=0.3, rot=0)
+            if df_lia_area.name != "DE":
+                # Move water
+                update_lbl_pct(wedges[1], labels[1], delta_ang=0, delta_dist=0.3)
+                update_lbl_pct(
+                    wedges[1], autotexts[1], delta_ang=8, delta_dist=0.3, rot=0
+                )
 
-            # Move rocks
-            update_lbl_pct(wedges[2], labels[2], delta_ang=0, delta_dist=0.0)
-            update_lbl_pct(wedges[2], autotexts[2], delta_ang=45, delta_dist=0, rot=35)
+                # Move rocks
+                update_lbl_pct(wedges[2], labels[2], delta_ang=0, delta_dist=0.0)
+                update_lbl_pct(
+                    wedges[2], autotexts[2], delta_ang=45, delta_dist=0, rot=35
+                )
 
-            # Move veget
-            update_lbl_pct(wedges[3], labels[3], delta_ang=0, delta_dist=0.25)
-            update_lbl_pct(wedges[3], autotexts[3], delta_ang=-8, delta_dist=0.3, rot=0)
+                # Move veget
+                update_lbl_pct(wedges[3], labels[3], delta_ang=0, delta_dist=0.25)
+                update_lbl_pct(
+                    wedges[3], autotexts[3], delta_ang=-8, delta_dist=0.3, rot=0
+                )
+            else:
+                # Water
+                labels[1].update({"text": ""})
+                autotexts[1].update({"text": ""})
+
+                # Veget
+                labels[3].update({"text": ""})
+                autotexts[3].update({"text": ""})
+
+                # Rocks
+                update_lbl_pct(
+                    wedges[2], autotexts[2], delta_ang=80, delta_dist=0, rot=0
+                )  # percentage
 
         # ========================================================
         #                       BAR PLOT
@@ -1262,7 +1363,7 @@ def plot_donuts_v2(
 
         # Start plot
         # ==========
-        if df_lia_area.name in df_veget_surf.index:
+        if (df_lia_area.name in df_veget_surf.index) & (df_lia_area.name != "DE"):
             # Get data
             # --------
             df_bars_area = df_veget_surf.loc[
@@ -1467,6 +1568,12 @@ def plot_donuts_v2(
         # Connection line vegetation for no vegetation
         # --------------------------------------------
         else:
+            if df_lia_area.name == "DE":
+                p_noveget = wedges[2]  # Outter pie / rocks
+
+            line_start_angle = np.deg2rad(p_noveget.theta1 + 5)
+            bottom_line = np.linspace(line_start_angle, np.deg2rad(70), num=50)
+
             # Bottom arc
             plot_perc_lines(
                 vals=[0],
@@ -1486,11 +1593,12 @@ def plot_donuts_v2(
                 ymax=heights.max(),
                 per_max=df_bars_area_percent_max,
             )
+
             ax_bar.annotate(
                 "",
-                # The pie veget / arrow
+                # The deglaciated pie / arrow
                 xy=(
-                    0,
+                    line_start_angle,
                     y_bottom_line,
                 ),
                 # The arc bottom line / no arrow
