@@ -53,59 +53,87 @@ def get_lc_percent(
 
 def get_lc_surface(
     df: Union[pd.DataFrame, gpd.GeoDataFrame],
-    groupby: [str] = ["Country", "glacier", "veget", "landcover"],
-    index: [str] = None,
-    columns: [str] = None,
+    groupby=None,
+    reshape_index: list[str] = None,
+    reshape_columns: list[str] = None,
     round_dec: int = None,
     add_total: bool = True,
-    slope_correction: bool = True,
-    slope_col_name: str = "slope",
     area_col_name: str = "area",
-    area_corrected_col_name: str = "_slope_corrected",
     convert_factor: int = 1e6,
+    slope_correction: bool = False,
+    slope_col_name: str = "slope",
+    area_corrected_col_name: str = "_slope_corrected",
 ):
-    # TODO: faire la doc
+    """
+    Get surfaces by groups from a dataframes with an "area" column.
+    Reshape outputs as (reshape_index, reshape_columns)
+    - by defaut set as (groupby[:-1], groupby[-1] = "LC")
+
+    A column of the total surface for each group combination can be added.
+
+    :param df: Input dataframe
+    :param groupby: List of columns name to groupby the dataframe
+    :param reshape_index: List of name to set as index in the output
+    :param reshape_columns: List of name to set as columns in the output
+    :param round_dec: Number of decimal to  use in outputs
+    :param add_total: Default True, add a column Total per combination of group
+    :param area_col_name: Name of the area column in df
+    :param convert_factor: Converting factor used to scale outputs (division). Default 1e6 (m->km)
+    :param slope_correction: Default False - If True, use a column slope to correct surface
+    :param slope_col_name: Name of the slope column to use (in df) if slope correction is asked
+    :param area_corrected_col_name: Name of the slope corrected surface column to create
+
+    :return: Dataframe with the surface per group
+    """
+
+    # Function
+    # ========
     def change_lc_name_in_df(lc_name):
         return f"LC_{int(lc_name)}"
 
-    # Set name of the column to sue for the area
+    # Slope correction - if needed
+    # ============================
     if slope_correction is False:
         area_corrected_col_name = ""
-
-    # Add column surface
-    if f"{area_col_name}{area_corrected_col_name}" in list(df.columns):
-        pass
     else:
-        df.insert(
-            loc=len(df.columns),
-            column=f"{area_col_name}{area_corrected_col_name}",
-            value=raster.get_area_slope_corrected(
-                df[area_col_name], df[slope_col_name], sum=False
-            ),
-        )
+        if f"{area_col_name}{area_corrected_col_name}" in list(df.columns):
+            pass
+        else:
+            df.insert(
+                loc=len(df.columns),
+                column=f"{area_col_name}{area_corrected_col_name}",
+                value=raster.get_area_slope_corrected(
+                    df[area_col_name], df[slope_col_name], sum=False
+                ),
+            )
+
     # Get dataframe of surface per group
+    # ==================================
+    if groupby is None:
+        groupby = ["Country", "glacier", "veget", "LC"]
+
     df_surface = (
-        df.groupby(groupby, observed=False)[
-            f"{area_col_name}{area_corrected_col_name}"
-        ].sum()
+        df.groupby(groupby)[f"{area_col_name}{area_corrected_col_name}"].sum()
         / convert_factor
     ).reset_index()  # transform multi index to columns
 
     # Reshape groups as row and landcover surface as columns
-    if index is None:
-        index = groupby[:-1]
-    if columns is None:
-        columns = groupby[-1]
+    # =====================================================
+    if reshape_index is None:
+        reshape_index = groupby[:-1]
+    if reshape_columns is None:
+        reshape_columns = groupby[-1]
 
     ds_surface_all_index = df_surface.pivot_table(
-        index=index,
-        columns=columns,
+        index=reshape_index,
+        columns=reshape_columns,
         values=f"{area_col_name}{area_corrected_col_name}",
     ).fillna(
         0
     )  # Replace NaN by zero
 
     # Change name of lc_col_name to convention
+    # ========================================
     ds_surface_all_index.rename(
         columns={
             col: change_lc_name_in_df(col)
@@ -115,35 +143,17 @@ def get_lc_surface(
         inplace=True,
     )
 
+    # Round numbers
+    # =============
     if round_dec is not None:
         ds_surface_all_index = ds_surface_all_index.round(round_dec)
 
     # Add total surface column
+    # ========================
     if add_total is True:
         ds_surface_all_index[f"Total_LC"] = ds_surface_all_index.sum(axis=1)
 
     return ds_surface_all_index
-
-
-def rename_lc_df(
-    df: pd.DataFrame,
-    lcmap: LandCoverMap,
-    inplace: bool = False,
-    lc_col_prefix: str = "LC",
-):
-    # Create a dictionary of correspondence LC_XXX to type in LCMAP
-    dict_rename = {}
-    df_lc_col_names = [
-        col_name for col_name in df.columns if col_name.startswith(lc_col_prefix)
-    ]
-    for col in df_lc_col_names:
-        dict_rename[col] = lcmap.get_type_of_code(int(col[-1]))
-    # rename colums
-
-    if inplace:
-        df.rename(columns=dict_rename, inplace=inplace)
-    else:
-        return df.rename(columns=dict_rename, inplace=inplace)
 
 
 def plot_lc_map_and_hist(
@@ -160,6 +170,23 @@ def plot_lc_map_and_hist(
     save_file: str = None,
     return_ax: bool = False,
 ):
+    """
+    Scripts used for OSO Theia and Carto H1A plots
+
+    :param raster_file:
+    :param gdf:
+    :param lc_percent:
+    :param lc_surface:
+    :param lc_map:
+    :param title:
+    :param bbox_anchor_legend:
+    :param basemap:
+    :param gdf_outline:
+    :param hatch:
+    :param save_file:
+    :param return_ax:
+    :return:
+    """
     # Open raster + masking to land cover map
     # =======================================
     ds = rioxr.open_rasterio(raster_file, mask_and_scale=True)
