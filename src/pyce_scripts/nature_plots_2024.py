@@ -133,8 +133,10 @@ def get_table_SI_1(
     lcmap_glacier_name="snow & ice",
     lcmap_veget_name="vegetation",
     lcmap_rocks_name="rocks & sediments",
-    lcmap_water_name="water",
+    lcmap_water_name: Union[None, str] = "water",
     veget_codes=[1, 2, 3, 6],
+    surface_to_divide_by: Union[None, pd.DataFrame] = None,
+    round_dec=1,
 ):
     # Test on names
     if not lcmap_deglaciated_name in lcmap.df["Type"].values:
@@ -176,8 +178,11 @@ def get_table_SI_1(
     # ==========
     # PERCENTAGE
     # ==========
-    percent_lia = surface_SI_1.div(surface_SI_1["Total_LC"], axis=0) * 100
-    percent_lia = percent_lia.map("{:.1f}%".format)
+    if surface_to_divide_by is None:
+        surface_to_divide_by = surface_SI_1
+
+    percent_lia = surface_SI_1.div(surface_to_divide_by["Total_LC"], axis=0) * 100
+    percent_lia = percent_lia.map(f"{{:.{round_dec}f}}%".format)
     percent_lia["Total_LC"] = np.nan
     percent_lia["zone"] = "1_lia"
 
@@ -185,14 +190,14 @@ def get_table_SI_1(
     # -----------
     percent_deiced = (
         surface_SI_1.div(
-            surface_SI_1[[f"LC_{lcmap.get_code_of_type(lcmap_deglaciated_name)}"]].sum(
-                axis=1
-            ),
+            surface_to_divide_by[
+                [f"LC_{lcmap.get_code_of_type(lcmap_deglaciated_name)}"]
+            ].sum(axis=1),
             axis=0,
         )
         * 100
     )
-    percent_deiced = percent_deiced.map("{:.1f}%".format)
+    percent_deiced = percent_deiced.map(f"{{:.{round_dec}f}}%".format)
     if lcmap_glacier_name is not None:
         percent_deiced[f"LC_{lcmap.get_code_of_type(lcmap_glacier_name)}"] = np.nan
     percent_deiced["Total_LC"] = np.nan
@@ -202,21 +207,27 @@ def get_table_SI_1(
     # -----------
     percent_veget = (
         surface_SI_1.div(
-            surface_SI_1[[f"LC_{lcmap.get_code_of_type(lcmap_veget_name)}"]].sum(
-                axis=1
-            ),
+            surface_to_divide_by[
+                [f"LC_{lcmap.get_code_of_type(lcmap_veget_name)}"]
+            ].sum(axis=1),
             axis=0,
         )
         * 100
     )
-    percent_veget = percent_veget.map("{:.1f}%".format)
+    percent_veget = percent_veget.map(f"{{:.{round_dec}f}}%".format)
 
     if lcmap_glacier_name is None:
-        not_veget_cols = [
-            f"LC_{lcmap.get_code_of_type(lcmap_deglaciated_name)}",
-            f"LC_{lcmap.get_code_of_type(lcmap_rocks_name)}",
-            f"LC_{lcmap.get_code_of_type(lcmap_water_name)}",
-        ]
+        if lcmap_water_name is not None:
+            not_veget_cols = [
+                f"LC_{lcmap.get_code_of_type(lcmap_deglaciated_name)}",
+                f"LC_{lcmap.get_code_of_type(lcmap_rocks_name)}",
+                f"LC_{lcmap.get_code_of_type(lcmap_water_name)}",
+            ]
+        else:
+            not_veget_cols = [
+                f"LC_{lcmap.get_code_of_type(lcmap_deglaciated_name)}",
+                f"LC_{lcmap.get_code_of_type(lcmap_rocks_name)}",
+            ]
     else:
         not_veget_cols = [
             f"LC_{lcmap.get_code_of_type(lcmap_glacier_name)}",
@@ -231,7 +242,7 @@ def get_table_SI_1(
 
     # Concat surface and percentage + rename Alps
     # ===========================================
-    surface_SI_1 = surface_SI_1.map("{:.1f}".format)
+    surface_SI_1 = surface_SI_1.map(f"{{:.{round_dec}f}}".format)
     surface_SI_1 = surface_SI_1.assign(zone="0_lia")
 
     table_SI_1 = (
@@ -261,10 +272,12 @@ def get_table_SI_1(
     )
 
 
-def get_table_SI_2(df_lia, df_buffer, lcmap_lia, lcmap_buffer):
+def get_table_SI_2(df_lia, df_buffer, lcmap_lia, lcmap_buffer, round_dec=1):
     # Get percentage of buffer through TABLE SI 1
     # ===========================================
-    table_buffer = get_table_SI_1(df_buffer, lcmap_buffer, lcmap_glacier_name=None)
+    table_buffer = get_table_SI_1(
+        df_buffer, lcmap_buffer, lcmap_glacier_name=None, round_dec=round_dec
+    )
 
     table_buffer_SI_2 = table_buffer.reset_index()
     table_buffer_SI_2 = (
@@ -291,6 +304,83 @@ def get_table_SI_2(df_lia, df_buffer, lcmap_lia, lcmap_buffer):
         table_lia_SI_2.drop(table_lia_SI_2.loc[table_lia_SI_2.zone == "LIA"].index)
         .drop(table_lia_SI_2.loc[table_lia_SI_2.zone == "[km²]"].index)
         .drop(columns=["deglaciated", "LIA", "snow & ice"])
+        .assign(LIA="In")
+        .set_index(["Country"])
+        .rename(
+            index={
+                "ALPS": "Z_ALPS",
+            }
+        )
+    )
+
+    # Concat both
+    # ===========
+    table_SI_2 = (
+        pd.concat([table_lia_SI_2, table_buffer_SI_2])
+        .reset_index()
+        .set_index(
+            [
+                "Country",
+                "zone",
+                "LIA",
+            ]
+        )
+        .sort_index()
+        .rename(
+            index={
+                "Z_ALPS": "ALPS",
+            }
+        )
+    )
+    return table_SI_2
+
+
+def get_table_SI_2_uncert(
+    df_lia, df_buffer, lcmap_lia, lcmap_buffer, surface_to_divide_by, round_dec=1
+):
+    # Get percentage of buffer through TABLE SI 1
+    # ===========================================
+    table_buffer = get_table_SI_1(
+        df_buffer,
+        lcmap_buffer,
+        surface_to_divide_by=surface_to_divide_by,
+        lcmap_glacier_name=None,
+        lcmap_water_name=None,
+        round_dec=round_dec,
+    )
+
+    table_buffer_SI_2 = table_buffer.reset_index()
+    table_buffer_SI_2 = (
+        table_buffer_SI_2.drop(
+            table_buffer_SI_2.loc[table_buffer_SI_2.zone == "LIA"].index
+        )
+        .drop(table_buffer_SI_2.loc[table_buffer_SI_2.zone == "[km²]"].index)
+        .drop(columns=["deglaciated", "LIA"])
+        .assign(LIA="Out")
+        .set_index(["Country"])
+        .rename(
+            index={
+                "ALPS": "Z_ALPS",
+            }
+        )
+    )
+
+    # Get percentage of LIA through TABLE SI 1
+    # ===========================================
+    table_lia = get_table_SI_1(
+        df_lia,
+        lcmap_lia,
+        surface_to_divide_by=surface_to_divide_by,
+        lcmap_glacier_name=None,
+        lcmap_water_name=None,
+        round_dec=round_dec,
+    )
+
+    table_lia_SI_2 = table_lia.reset_index()
+    table_lia_SI_2 = (
+        table_lia_SI_2.drop(table_lia_SI_2.loc[table_lia_SI_2.zone == "LIA"].index)
+        .drop(table_lia_SI_2.loc[table_lia_SI_2.zone == "[km²]"].index)
+        .drop(columns=["deglaciated", "LIA"])
         .assign(LIA="In")
         .set_index(["Country"])
         .rename(
