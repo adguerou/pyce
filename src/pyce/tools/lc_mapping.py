@@ -70,7 +70,7 @@ h1b_paper = {
     _lcm_colors: lc_colormaps.colors_h1b_paper,
     _lcm_codes_to_mask: None,
     _lcm_mask_val: None,
-    _lcm_reindex: [3, 2, 1, 6, 0, 4, 5, 7, 8],
+    _lcm_reindex: [3, 2, 1, 6, 0, 4, 5, 8, 9],
 }
 
 s2glc = {
@@ -123,6 +123,7 @@ class LandCoverMap:
         self.name = name
         self.codes_masked = None
         self.mask_val = None
+        self.index = None
 
         # Create dataframe from direct object or from file
         if df is None:
@@ -159,7 +160,10 @@ class LandCoverMap:
     def _set_param_from_name(self):
         if self.name in dict_lc_maps:
             param = dict_lc_maps[self.name]
+
             self._set_colors(param[_lcm_colors])
+            self.index = param[_lcm_reindex]
+
             if param[_lcm_codes_to_mask] is not None:
                 self.group_to(
                     codes=param[_lcm_codes_to_mask],
@@ -280,7 +284,7 @@ class LandCoverMap:
                 type=group_type, code=group_code, color=group_color, in_place=in_place
             )
         else:
-            lc_map = copy.copy(self)
+            lc_map = copy.deepcopy(self)
             lc_map.remove_item(col_name=_code_name, col_val=codes, in_place=in_place)
             lc_map.add_item(
                 type=group_type, code=group_code, color=group_color, in_place=in_place
@@ -290,7 +294,7 @@ class LandCoverMap:
     def remove_item(
         self,
         col_name: str,
-        col_val: Union[int, list[int]],
+        col_val: list[int],
         in_place: bool = True,
     ):
         """
@@ -302,10 +306,15 @@ class LandCoverMap:
         :return:
         """
         if in_place is True:
+            for val in col_val:
+                del self.index[self.index.index(val)]
             self.df = self.df.loc[~self.df[col_name].isin(col_val)]
         else:
-            lc_map = copy.copy(self)
+            lc_map = copy.deepcopy(self)
+            for val in col_val:
+                del lc_map.index[lc_map.index.index(val)]
             lc_map.df = lc_map.df.loc[~lc_map.df[col_name].isin(col_val)]
+
             return lc_map
 
     def add_item(
@@ -330,7 +339,7 @@ class LandCoverMap:
             self.df = pd.concat([self.df, new_item], ignore_index=True)
             self.df.reset_index()
         else:
-            lc_map = copy.copy(self)
+            lc_map = copy.deepcopy(self)
             lc_map.df = pd.concat([lc_map.df, new_item], ignore_index=True)
             lc_map.df.reset_index()
             return lc_map
@@ -347,11 +356,11 @@ class LandCoverMap:
                 "Lenght of 'index_list' must be equal to the LandCoverMap rows"
             )
         if in_place:
-            self.df = self.df.reindex(index_list)
+            self.df = self.df.reindex(index=index_list)
             self.df.reset_index(drop=True, inplace=True)
         else:
-            lc_map = copy.copy(self)
-            lc_map.df = lc_map.df.reindex(index_list)
+            lc_map = copy.deepcopy(self)
+            lc_map.df = lc_map.df.reindex(index=index_list)
             lc_map.df.reset_index(drop=True, inplace=True)
             return lc_map
 
@@ -383,23 +392,21 @@ class LandCoverMap:
         """
         if not reverse:
             if in_place:
-                self.reindex_from_list(
-                    index_list=dict_lc_maps[self.name][_lcm_reindex], in_place=in_place
+                self.reindex_from_col_val(
+                    values=self.index, col_name=_code_name, in_place=in_place
                 )
             else:
-                return self.reindex_from_list(
-                    index_list=dict_lc_maps[self.name][_lcm_reindex], in_place=in_place
+                return self.reindex_from_col_val(
+                    values=self.index, col_name=_code_name, in_place=in_place
                 )
         else:
             if in_place:
-                self.reindex_from_list(
-                    index_list=dict_lc_maps[self.name][_lcm_reindex][::-1],
-                    in_place=in_place,
+                self.reindex_from_col_val(
+                    values=self.index[::-1], col_name=_code_name, in_place=in_place
                 )
             else:
-                return self.reindex_from_list(
-                    index_list=dict_lc_maps[self.name][_lcm_reindex][::-1],
-                    in_place=in_place,
+                return self.reindex_from_col_val(
+                    values=self.index[::-1], col_name=_code_name, in_place=in_place
                 )
 
     def swap_rows_from_index(self, id1, id2, in_place=False):
@@ -476,7 +483,7 @@ class LandCoverMap:
         if in_place is True:
             self.df = self.df.loc[self.df[_code_name].isin(sel)]
         else:
-            lc_map = copy.copy(self)
+            lc_map = copy.deepcopy(self)
             lc_map.df = lc_map.df.loc[lc_map.df[_code_name].isin(sel)]
             return lc_map
 
@@ -558,7 +565,7 @@ def rename_lcmap_df_col(
         raise IOError("No LandCoverMap column found. Check column name")
 
     if not inplace:
-        df = df.copy()
+        df = copy.deepcopy(df)
 
     if prefix:
         df[col] = df[col].apply(lambda x: lcmap.get_type_of_code(int(x[-1])))
