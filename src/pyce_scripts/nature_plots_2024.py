@@ -7,6 +7,7 @@ import seaborn as sbn
 from matplotlib import pyplot as plt
 from matplotlib.collections import PolyCollection
 from matplotlib.legend_handler import HandlerTuple
+from matplotlib.patches import PathPatch
 from matplotlib.ticker import MultipleLocator
 from pyce.tools.lc_mapping import LandCoverMap
 
@@ -2156,28 +2157,38 @@ def plot_donuts_classic(
             )
 
 
-def plot_violin(df, lcmap, x_violin="altitude", save_dir=None, save_name=None):
+def plot_violin(
+    df,
+    lcmap,
+    table_percent_in=None,
+    table_percent_out=None,
+    x_violin="altitude",
+    save_dir=None,
+    save_name=None,
+):
     """
 
     :param df:
     :param lcmap:
+    :param table_percent_in:
+    :param table_percent_out:
+    :param x_violin:
     :param save_dir:
     :param save_name:
     :return:
+
     """
 
     # Reorder lcmap for plottings
     # ===========================
     lcmap_reindex = lcmap.reindex(reverse=True, in_place=False)
-    lcmap_reindex.remove_item(
-        col_name="Code", col_val=[9, 8], in_place=True
-    )  # Do it after reindex otherwise bug
 
     # Figure
     # ======
     f1, axes = plt.subplots(1, 1, figsize=(5, 5))
 
-    # Plot
+    #       Plot
+    # ==================
     ax = sbn.violinplot(
         data=df,
         x=x_violin,
@@ -2233,87 +2244,39 @@ def plot_violin(df, lcmap, x_violin="altitude", save_dir=None, save_name=None):
         handler_map={tuple: HandlerTuple(ndivide=None, pad=0)},
     )
 
-    ax.set_xlabel("Altitude [m a.s.l]", fontsize=14, labelpad=10)
+    ax.set_xlabel("Altitude [m a.s.l]", fontsize=13)
     ax.set_yticklabels(labels)
     ax.set(ylabel=None)
 
-    # Add altitude differences
-    # ========================
-    for l, ind in zip(ax.lines, range(np.size(ax.lines))):
-        if (ind + 1) % 6 == 1:
-            delta_alt = l.get_data()[0][0] - ax.lines[ind + 3].get_data()[0][0]
-            if delta_alt > 0:
-                sign_delta = "+"
-            else:
-                sign_delta = ""
-            ax.text(
-                l.get_data()[0][0] - 500,
-                l.get_data()[1][l.get_data()[1].nonzero()][0] + 0.1,
-                f"{sign_delta}{delta_alt:.0f} m",
-                fontsize=8,
-            )
-
     # Add percentage for each violin
     # ==============================
-    # Get percentage for LIA deiced
-    surf_deiced = lc_distrib.get_lc_surface(
-        df.loc[df.lia == True],
-        groupby=["Country", "landcover"],
-        round_dec=1,
-        add_total=True,
-        slope_correction=True,
-    )
-    surf_deiced.loc["Alps"] = surf_deiced.sum(numeric_only=True)
-    perc_deiced = (surf_deiced.div(surf_deiced.Total_LC, axis=0) * 100).drop(
-        "Total_LC", axis=1
-    )
-    perc_deiced_alps = (
-        perc_deiced[
-            [f"LC_{code}" for code in lcmap_reindex.get_code()]
-        ]  # Reorder landcover
-        .loc[perc_deiced.index == "Alps"]
-        .values[0]  # Get as array
-    )
-
-    # Get percentage for outside LIA
-    surf_out = lc_distrib.get_lc_surface(
-        df.loc[df.lia == False],
-        groupby=["Country", "landcover"],
-        round_dec=2,
-        add_total=True,
-        slope_correction=True,
-    )
-    surf_out.loc["Alps"] = surf_out.sum(numeric_only=True)
-    perc_out = (surf_out.div(surf_out.Total_LC, axis=0) * 100).drop("Total_LC", axis=1)
-    perc_out_alps = (
-        perc_out[
-            [f"LC_{code}" for code in lcmap_reindex.get_code()]
-        ]  # Reorder landcover
-        .loc[perc_out.index == "Alps"]
-        .values[0]  # Get as array
-    )
-
-    # Plot
+    # Set positions
     x_pos = (
         df.groupby(["landcover"])["altitude"]
         .max()
         .reindex(lcmap_reindex.get_code())
         .tolist()
     )
-    x_pos[2] = 3800  # modify rocks position
+
+    x_pos[1] = 4000  # modify rocks position
+    x_pos[2] = 3500  # modify sparse position
     y_pos = range(len(x_pos))
 
+    # Plots
+    # -----
     for i in range(len(x_pos)):
+        # LIA
         ax.text(
             x_pos[i],
-            y_pos[i] - 0.15,  # -0...as y axis origin is up
-            f"{perc_deiced_alps[i]:.1f}%",
+            y_pos[i] - 0.15,  # -0... as y axis origin is up
+            f"{table_percent_in[i]}",
             va="center",
         )
+        # OUT
         ax.text(
             x_pos[i],
             y_pos[i] + 0.2,  # +0... as y axis origin is up
-            f"{perc_out_alps[i]:.1f}%",
+            f"{table_percent_out[i]}",
             alpha=0.6,
             va="center",
         )
@@ -2336,3 +2299,265 @@ def plot_violin(df, lcmap, x_violin="altitude", save_dir=None, save_name=None):
 
     if save_name is not None:
         plt.savefig(os.path.join(save_dir, save_name), dpi=300)
+
+
+def plot_fig2_b(
+    df: pd.DataFrame,
+    lcmap: LandCoverMap,
+    lcmap_veget: LandCoverMap,
+    dict_params: dict = None,
+    save_name: str = None,
+    save_dir: str = None,
+):
+    # Make sure landcover maps are well ordered
+    # -----------------------------------------
+    lcmap = lcmap.reindex(reverse=True, in_place=False)
+    lcmap_veget = lcmap_veget.reindex(reverse=True, in_place=False)
+
+    # Colormaps
+    # ---------
+    palette = [lcmap.get_color_of_code(code=0), lcmap.get_color_of_code(code=8)]
+    palette_veget = list(lcmap_veget.get_colors())
+
+    if dict_params is None:
+        dict_params = dict()
+        dict_params["lia"] = "lia"
+        dict_params["veget"] = "veget"
+        dict_params["landcover"] = "landcover"
+        dict_params["var_x"] = "maat"
+        dict_params["var_y"] = "slope"
+        dict_params["binwidth_x"] = 0.2
+        dict_params["binwidth_y"] = 2
+        dict_params["thresh"] = 0.01
+        dict_params["vmin"] = 0.05
+        dict_params["vmax"] = 0.3
+        dict_params["xlim"] = (-11.0, 7.8)
+        dict_params["ylim"] = (-0.0, 80)
+        dict_params["xlabel"] = "MAAT [°C]"
+        dict_params["ylabel"] = "Slope [degree]"
+        dict_params["label_margins"] = "LIA"
+        dict_params["dpi"] = 300
+
+    #          Grid
+    # ======================
+    # main plot for LIA only (veget vs rocks)
+    g = sbn.JointGrid(
+        data=df.loc[df[dict_params["lia"]] == True],
+        x=dict_params["var_x"],
+        y=dict_params["var_y"],
+        hue=dict_params["veget"],
+        palette=palette,
+        marginal_ticks=True,
+        xlim=dict_params["xlim"],
+        ylim=dict_params["ylim"],
+        ratio=3,
+        height=5,
+        space=0.05,
+    )
+
+    # 2D scatter plots + density
+    # ==========================
+    # Scatter plot of veget and rocks
+    g.plot_joint(
+        sbn.histplot,
+        binwidth=(dict_params["binwidth_x"], dict_params["binwidth_y"]),
+        stat="percent",
+        common_norm=False,
+        thresh=dict_params["thresh"],
+        vmin=dict_params["vmin"],
+        vmax=dict_params["vmax"],
+        cbar=False,
+        alpha=1,
+        legend=True,
+    )
+    # Contours of rocks and veget
+    g.plot_joint(
+        sbn.kdeplot,
+        common_norm=False,
+        fill=False,
+        linewidths=1,
+        levels=[0.2, 0.4, 0.6, 0.8, 0.95],
+        legend=False,
+    )
+
+    #          Box plots
+    # =============================
+    # X axis
+    h1 = sbn.boxplot(
+        data=df,
+        x=dict_params["var_x"],
+        y=dict_params["lia"],
+        hue=dict_params["veget"],
+        order=[False, True],
+        hue_order=[
+            False,
+            True,
+            "wfefwe",
+        ],  # fake extra hue to shift box plot to insert veget bix plots
+        orient="horizontal",
+        width=0.8,
+        ax=g.ax_marg_x,
+        legend=False,
+        palette=palette,
+        gap=0.1,
+        fliersize=0.05,
+    )
+    # Y axis
+    h2 = sbn.boxplot(
+        data=df,
+        x=dict_params["lia"],
+        y=dict_params["var_y"],
+        hue=dict_params["veget"],
+        order=[True, False],
+        hue_order=[
+            False,
+            True,
+            "wfefwe",
+        ],  # fake extra hue to shift box plot to insert veget bix plots
+        width=0.8,
+        ax=g.ax_marg_y,
+        legend=False,
+        palette=palette,
+        gap=0.1,
+        fliersize=0.05,
+    )
+
+    # Vegetation box plot
+    # ===================
+    # X axis
+    h1 = sbn.boxplot(
+        data=df.loc[(df.veget == True)],
+        x=dict_params["var_x"],
+        y=dict_params["lia"],
+        hue=dict_params["landcover"],
+        orient="horizontal",
+        hue_order=[0, 0, 0, 0, 0, 0, 0, 0]
+        + list(
+            lcmap_veget.get_code()
+        ),  # fake extra hue to shift box plot / number is empirical
+        width=0.9,
+        ax=g.ax_marg_x,
+        legend=True,  # To get handles to create my own later on
+        palette=palette_veget,
+        fliersize=0.05,
+        gap=0.05,
+    )
+    # Y axis
+    h2 = sbn.boxplot(
+        data=df.loc[(df.veget == True)],
+        x=dict_params["lia"],
+        y=dict_params["var_y"],
+        hue=dict_params["landcover"],
+        order=[True, False],
+        hue_order=[0, 0, 0, 0, 0, 0, 0, 0]
+        + list(
+            lcmap_veget.get_code()
+        ),  # fake extra hue to shift box plot / number is empirical
+        width=0.9,
+        ax=g.ax_marg_y,
+        legend=False,
+        palette=palette_veget,
+        fliersize=0.05,
+        gap=0.05,
+    )
+
+    #             LEGEND
+    # ==========================
+    h1.legend_.remove()
+
+    # Colors - alpha for non LIA
+    # --------------------------
+    # Color of rock/veget/landcover type x 2 for LIA in and out
+    palette_marginal = (
+        np.concatenate((np.array([palette]).T, np.array([palette]).T), axis=1)
+        .ravel()
+        .tolist()
+    )
+    palette_marginal_veget = (
+        np.concatenate(
+            (np.array([palette_veget]).T, np.array([palette_veget]).T), axis=1
+        )
+        .ravel()
+        .tolist()
+    )
+
+    lines_per_boxplot_h1 = len(h1.lines) // len(h1.findobj(PathPatch))
+    lines_per_boxplot_h2 = len(h2.lines) // len(h2.findobj(PathPatch))
+
+    # Loop over each box plot
+    # -----------------------
+    # X axis
+    for (ind, box), color in zip(
+        enumerate(h1.findobj(PathPatch)), palette_marginal + palette_marginal_veget
+    ):
+        alpha = 1
+        if ind % 2 == 0:
+            alpha = 0.4
+        box.set_facecolor(color)
+        box.set_alpha(alpha=alpha)
+
+        for line in h1.lines[
+            ind * lines_per_boxplot_h1 : (ind + 1) * lines_per_boxplot_h1
+        ]:
+            # line.set_color("green")
+            line.set_alpha(alpha=alpha)
+            line.set_mec(
+                (0, 0, 0, alpha / 2),
+            )  # edgecolor of fliers
+
+    # Y axis
+    for (ind, box), color in zip(
+        enumerate(h2.findobj(PathPatch)), palette_marginal + palette_marginal_veget
+    ):
+        alpha = 1
+        if ind % 2 != 0:
+            alpha = 0.4
+        box.set_facecolor(color)
+        box.set_alpha(alpha=alpha)
+
+        for line in h2.lines[
+            ind * lines_per_boxplot_h2 : (ind + 1) * lines_per_boxplot_h2
+        ]:
+            line.set_alpha(alpha=alpha)
+            line.set_mec(
+                (0, 0, 0, alpha / 2),
+            )  # edgecolor of fliers
+
+    # General parameters
+    # =================
+    h1.xaxis.set_label_position("top")
+    h1.set_xlabel(dict_params["xlabel"], fontsize=13, labelpad=8)
+    h1.set_ylabel(dict_params["label_margins"], fontsize=10)
+    h1.set_yticklabels(labels=["out", "in"], fontsize=10)
+    sbn.despine(ax=h1, left=True, bottom=True, top=False)
+    h1.tick_params(left=False, bottom=False, labelbottom=False, top=True, labeltop=True)
+
+    h2.yaxis.set_label_position("right")
+    h2.set_xlabel(dict_params["label_margins"], fontsize=10)
+    h2.set_xticklabels(labels=["in", "out"], fontsize=10)
+    h2.set_ylabel(dict_params["ylabel"], fontsize=13, labelpad=8)
+    sbn.despine(ax=h2, left=True, bottom=True, right=False)
+    h2.tick_params(
+        bottom=False, left=False, labelleft=False, right=True, labelright=True
+    )
+
+    # Figure parameters
+    # =================
+    plt.subplots_adjust(right=0.94, top=0.92)
+    sbn.move_legend(
+        g.ax_joint,
+        "upper left",
+        ncol=1,
+        title=None,
+        frameon=False,
+        fontsize=9,
+        labels=["Rocks & sediments", "Vegetation"],
+    )
+    g.set_axis_labels(dict_params["xlabel"], dict_params["ylabel"], fontsize=14)
+    g.refline(x=0, y=30, marginal=False)
+
+    # Sve figure
+    if save_name is not None:
+        plt.savefig(
+            os.path.join(save_dir, save_name), dpi=dict_params["dpi"], transparent=False
+        )
