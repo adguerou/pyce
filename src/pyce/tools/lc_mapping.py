@@ -295,7 +295,7 @@ class LandCoverMap:
         self,
         col_name: str,
         col_val: list[int],
-        in_place: bool = True,
+        in_place: bool = False,
     ):
         """
         Remove a line from a LandCoverMap dataframe based on values of a given column
@@ -305,6 +305,9 @@ class LandCoverMap:
         :param in_place: If True, modify the LandCoverMap
         :return:
         """
+
+        # TODO: Remove the in_place for remove_item as it modify the dict_lc_maps itself and create bug situation when creating another lcamp with the same name, index have disapearred
+        #
         if in_place is True:
             for val in col_val:
                 del self.index[self.index.index(val)]
