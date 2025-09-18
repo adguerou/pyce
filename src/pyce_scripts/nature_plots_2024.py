@@ -992,7 +992,7 @@ def plot_donuts(
             )
 
 
-def plot_donuts_v2(
+def plot_fig_1_donuts(
     df_lia: pd.DataFrame,
     df_deglaciated: pd.DataFrame,
     df_veget: pd.DataFrame,
@@ -2157,7 +2157,7 @@ def plot_donuts_classic(
             )
 
 
-def plot_violin(
+def plot_fig_2a(
     df,
     lcmap,
     table_percent_in=None,
@@ -2230,10 +2230,6 @@ def plot_violin(
         )
 
     # Legend
-    labels = [
-        lbl.replace(" v", "\nv").replace("& s", "&\ns")
-        for lbl in lcmap_reindex.get_type()
-    ]
     ax.legend(
         handles=[tuple(handles[::2]), tuple(handles[1::2])],
         labels=["LIA", "Outside LIA"],
@@ -2245,6 +2241,10 @@ def plot_violin(
     )
 
     ax.set_xlabel("Altitude [m a.s.l]", fontsize=13)
+    labels = [
+        lbl.replace(" v", "\nv").replace("& s", "&\ns")
+        for lbl in lcmap_reindex.get_type()
+    ]
     ax.set_yticklabels(labels)
     ax.set(ylabel=None)
 
@@ -2301,7 +2301,7 @@ def plot_violin(
         plt.savefig(os.path.join(save_dir, save_name), dpi=300)
 
 
-def plot_fig2_b(
+def plot_fig_2b(
     df: pd.DataFrame,
     lcmap: LandCoverMap,
     lcmap_veget: LandCoverMap,
@@ -2561,3 +2561,105 @@ def plot_fig2_b(
         plt.savefig(
             os.path.join(save_dir, save_name), dpi=dict_params["dpi"], transparent=False
         )
+
+
+def plot_fig_SI_2(
+    df_lia: pd.DataFrame,
+    df_training: pd.DataFrame,
+    xplot: str = "NCRI",
+    yplot: str = "NARI",
+    hue: str = "landcover",
+    lcmap_lia: LandCoverMap = None,
+    lcmap_training: LandCoverMap = None,
+    lcmap_legend: LandCoverMap = None,
+    xlim: tuple[float, float] = (-0.2, 0.7),
+    ylim: tuple[float, float] = (-0.4, 0.5),
+    title=None,
+    save_dir=None,
+    save_name=None,
+):
+    # TRAINING / Scatter plot + kde for marginal
+    # ==========================================
+    g = sbn.jointplot(
+        data=df_training,
+        x=xplot,
+        y=yplot,
+        kind="scatter",
+        hue=hue,
+        hue_order=lcmap_training.get_code().tolist(),
+        palette=lcmap_training.get_colors().tolist(),
+        joint_kws=dict(s=2, legend=True, edgecolor="None"),
+        marginal_kws={"common_grid": True, "common_norm": True},
+        marginal_ticks=False,
+        xlim=xlim,
+        ylim=ylim,
+        alpha=0.4,
+        height=5,
+        ratio=5,
+        space=0.8,
+    )
+
+    # TRAINING - KDE contours on main plot
+    # ------------------------------------
+    sbn.kdeplot(
+        data=df_training,
+        x=xplot,
+        y=yplot,
+        hue=hue,
+        hue_order=lcmap_training.get_code().tolist(),
+        palette=lcmap_training.get_colors().tolist(),
+        legend=False,
+        linewidths=1,
+        alpha=1,
+        fill=False,
+        ax=g.ax_joint,
+    )
+
+    # Scatter only of LIA (all + sparse)
+    # =================================
+    sbn.scatterplot(
+        data=df_lia,
+        x=xplot,
+        y=yplot,
+        hue=hue,
+        hue_order=lcmap_lia.get_code().tolist(),
+        palette=lcmap_lia.get_colors().tolist(),
+        legend=True,
+        s=2,
+        alpha=0.2,
+        zorder=0,
+        ax=g.ax_joint,
+    )
+
+    # LAYOUT
+    # ======
+    # Legend
+    sbn.move_legend(g.ax_joint, "lower right", title=None, markerscale=5)
+
+    # Get handles and plot legend
+    labels = lcmap_legend.get_type().tolist()
+    handles, _labels = g.ax_joint.get_legend_handles_labels()
+    handles = [handles[2], handles[0], handles[3], handles[1], handles[4], handles[5]]
+
+    leg = g.ax_joint.legend(
+        handles=handles, labels=labels, loc="lower right", title=None, markerscale=4
+    )
+    for hdl in leg.legend_handles:
+        hdl.set_alpha(1)
+
+    # Title
+    if title is not None:
+        g.ax_marg_x.text(
+            0.35, 0.65, title, weight="bold", transform=g.ax_marg_x.transAxes
+        )
+
+    # X/Y lables
+    g.ax_joint.set_xlabel(xlabel=xplot[:-2], fontweight="bold")
+    g.ax_joint.set_ylabel(ylabel=yplot[:-2], fontweight="bold")
+
+    # Grid
+    plt.grid(ls="--")
+
+    # Saving
+    if save_dir is not None and save_name is not None:
+        plt.savefig(os.path.join(save_dir, save_name) + ".png", dpi=200)
