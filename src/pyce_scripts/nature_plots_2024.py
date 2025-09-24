@@ -413,6 +413,122 @@ def get_table_SI_2_uncert(
     return table_SI_2
 
 
+def get_table_SI_4(table_SI_1, table_SI_2, lcmap_veget, stocks, factor):
+    # Functions to get CO tons from stocks and surface
+    def get_CO(df, cols, stocks, factor):
+        df_CO = pd.DataFrame(index=df.index)
+
+        for col, stock in zip(cols, stocks):
+            df_CO[col] = df[col] * stock * factor
+
+        df_CO["Total"] = df_CO.sum(axis=1)
+
+        return df_CO
+
+    # Today estimation
+    # ================
+    # CO tons
+    table_surf_today = (
+        table_SI_1.loc[
+            table_SI_1.zone == "[km²]", ["Country"] + list(lcmap_veget.df.Type)
+        ]
+        .set_index("Country")
+        .astype(np.float64)
+    )
+
+    table_co_today = get_CO(
+        table_surf_today,
+        cols=list(lcmap_veget.get_type()),
+        stocks=stocks,
+        factor=factor,
+    )
+
+    # Replace real zero with nan
+    table_co_today = table_co_today.replace({0: np.nan})
+
+    # CO percentage
+    table_co_today_perc = table_co_today.div(table_co_today["Total"], axis=0) * 100
+
+    table_co_today_perc.loc[table_co_today_perc.index != "ALPS", "Total"] = (
+        table_co_today.loc[table_co_today.index != "ALPS", "Total"]
+        / table_co_today.loc[table_co_today.index == "ALPS", "Total"].values
+        * 100
+    )  # Modify percentage of total as the percentage of each country compared to ALPS
+
+    # Define future index of the final table
+    table_co_today["time"] = "2015"
+    table_co_today_perc["time"] = "2015"
+
+    table_co_today["unit"] = "MtC"
+    table_co_today_perc["unit"] = "%"
+
+    # Future estimation
+    # =================
+    # Get future surface for each vegetation type
+    surf_deglaciated = (
+        table_SI_1.loc[table_SI_1.zone == "[km²]", ["Country", "deglaciated"]]
+        .set_index("Country")
+        .astype(np.float64)
+    )
+
+    percent_futur_str = table_SI_2.loc[
+        (table_SI_2.LIA == "Out") & (table_SI_2.zone == "Deglaciated"),
+        ["Country"] + list(lcmap_veget.df.Type),
+    ].set_index("Country")
+
+    def remove_percent(x):
+        return np.float64(x[:-1])
+
+    percent_futur = percent_futur_str.map(remove_percent)
+    surf_future = percent_futur.div(100).mul(surf_deglaciated.values, axis=1)
+
+    # CO tons
+    table_co_future = get_CO(
+        surf_future,
+        cols=list(lcmap_veget.get_type()),
+        stocks=stocks,
+        factor=factor,
+    )
+
+    # CO percentage
+    table_co_future_perc = table_co_future.div(table_co_future["Total"], axis=0) * 100
+
+    # Modify percentage of total as the percentage of each country compared to ALPS
+    table_co_future_perc.loc[table_co_future_perc.index != "ALPS", "Total"] = (
+        table_co_future.loc[table_co_future.index != "ALPS", "Total"]
+        / table_co_future.loc[table_co_future.index == "ALPS", "Total"].values
+        * 100
+    )
+
+    # Define future index of the final table
+    table_co_future["time"] = "future"
+    table_co_future_perc["time"] = "future"
+
+    table_co_future["unit"] = "MtC"
+    table_co_future_perc["unit"] = "%"
+
+    # Concatenation and formatting
+    # ============================
+    table_SI_4 = (
+        pd.concat(
+            [table_co_today, table_co_today_perc, table_co_future, table_co_future_perc]
+        )
+        .rename(index={"ALPS": "Z_ALPS"})
+        .reset_index()
+        .sort_values(["Country", "unit"])
+        .set_index(["Country", "unit", "time"])
+        .reindex(["MtC", "%"], level=1)
+        .rename(index={"Z_ALPS": "ALPS"})
+        .round(1)
+        .replace({100: np.nan})
+        .fillna("-")
+        # .astype(int)
+        # .replace({-1: "-"})
+    )
+
+    return table_SI_4
+
+
 def plot_donuts(
     df_donuts: pd.DataFrame,
     df_bars: pd.DataFrame,
