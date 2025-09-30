@@ -2779,3 +2779,127 @@ def plot_fig_SI_2(
     # Saving
     if save_dir is not None and save_name is not None:
         plt.savefig(os.path.join(save_dir, save_name) + ".png", dpi=200)
+
+
+def plot_fig_SI_5(
+    ds_cook: pd.DataFrame,
+    ds_shugar: pd.DataFrame,
+    ds_lia: pd.DataFrame,
+    save_dir=None,
+    save_name=None,
+):
+    # FIGURE
+    # ======
+    fig, ax = plt.subplots(figsize=(6, 4))
+
+    # Shugard
+    ax.scatter(
+        ds_shugar["area_m2"] / 1e6,
+        ds_shugar["volume_1e6m3"],
+        s=20,
+        alpha=1,
+        color="#a1dab4",
+        edgecolors="k",
+        lw=0.5,
+        label="Shugar et al. (2020)",
+        zorder=0,
+    )
+
+    # Cook
+    ax.scatter(
+        ds_cook["area_m2"] / 1e6,
+        ds_cook["volume_1e6m3"],
+        s=30,
+        alpha=1,
+        color="#41b6c4",
+        marker="d",
+        edgecolors="k",
+        lw=0.5,
+        label="Cook et al. (2015)",
+        zorder=0,
+    )
+
+    # LIA lakes
+    ax.scatter(
+        ds_lia["area_m2"] / 1e6,
+        ds_lia["volume_1e6m3_combined"],
+        s=20,
+        alpha=1,
+        edgecolors="k",
+        color="#225ea8",
+        label="LIA lakes",
+        zorder=20,
+    )
+
+    condi_size = ds_lia["area_m2"] < 1e3
+    ax.errorbar(
+        ds_lia.loc[condi_size, "area_m2"] / 1e6,
+        ds_lia.loc[condi_size, "volume_1e6m3_combined"],
+        yerr=ds_lia.loc[condi_size, "errors_vol_1e6m3_std"],
+        color="None",
+        ecolor="k",
+        lw=0.5,
+        ls="None",
+        errorevery=(0, 1),
+    )
+
+    condi_size = (ds_lia["area_m2"] >= 1e3) & (ds_lia["area_m2"] < 1e4)
+    ax.errorbar(
+        ds_lia.loc[condi_size, "area_m2"] / 1e6,
+        ds_lia.loc[condi_size, "volume_1e6m3_combined"],
+        yerr=ds_lia.loc[condi_size, "errors_vol_1e6m3_std"],
+        color="None",
+        ecolor="k",
+        lw=0.5,
+        ls="None",
+        errorevery=(0, 5),
+    )
+
+    condi_size = (ds_lia["area_m2"] >= 1e4) & (ds_lia["area_m2"] < 2 * 1e4)
+    ax.errorbar(
+        ds_lia.loc[condi_size, "area_m2"] / 1e6,
+        ds_lia.loc[condi_size, "volume_1e6m3_combined"],
+        yerr=ds_lia.loc[condi_size, "errors_vol_1e6m3_std"],
+        color="None",
+        ecolor="k",
+        lw=0.5,
+        ls="None",
+        errorevery=(0, 10),
+    )
+
+    condi_size = (ds_lia["area_m2"] >= 2 * 1e4) & (ds_lia["area_m2"] < 1e5)
+    ax.errorbar(
+        ds_lia.loc[condi_size, "area_m2"] / 1e6,
+        ds_lia.loc[condi_size, "volume_1e6m3_combined"],
+        yerr=ds_lia.loc[condi_size, "errors_vol_1e6m3_std"],
+        color="None",
+        ecolor="k",
+        lw=0.5,
+        ls="None",
+        errorevery=(0, 2),
+    )
+
+    condi_size = (ds_lia["area_m2"] >= 1e5) & (ds_lia["area_m2"] < 1e7)
+    ax.errorbar(
+        ds_lia.loc[condi_size, "area_m2"] / 1e6,
+        ds_lia.loc[condi_size, "volume_1e6m3_combined"],
+        yerr=ds_lia.loc[condi_size, "errors_vol_1e6m3_std"],
+        color="None",
+        ecolor="k",
+        lw=0.5,
+        ls="None",
+        errorevery=(0, 1),
+    )
+
+    # Settings
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel("Lake surface [km²]", fontsize=12)
+    ax.set_ylabel("Lake volume [1e6 m³]", fontsize=12)
+
+    ax.legend(fontsize=10)
+    plt.tight_layout()
+
+    # Saving
+    if save_dir is not None and save_name is not None:
+        plt.savefig(os.path.join(save_dir, save_name) + ".png", dpi=200)
