@@ -6,6 +6,7 @@ import pandas as pd
 import seaborn as sbn
 from matplotlib import pyplot as plt
 from matplotlib.collections import PolyCollection
+from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.legend_handler import HandlerTuple
 from matplotlib.patches import PathPatch
 from matplotlib.ticker import MultipleLocator
@@ -2677,6 +2678,273 @@ def plot_fig_2b(
         plt.savefig(
             os.path.join(save_dir, save_name), dpi=dict_params["dpi"], transparent=False
         )
+
+
+def plot_fig_3_pp(
+    df_perc,
+    lcmap: LandCoverMap,
+    colors: dict = None,
+    xlabels=["IUCN+", "IUCN", "WH", "RAMSAR"],
+    ylabels=["", "Glacier", "Deglaciated", "Veget", "Water"],
+    vmin=0.1,  # vmin à 0.1 / comme cela les valeurs à zeros (pas la protection) sont de la couleur set_under
+    # 0.1 et pas 1 pour quand le max de pp_perc =1, il y ai qd meme un range de couleur entre vmin/vmax, sinon heatmap fonctionne pas bien
+    # et 0.1 pour que ce soit == aux valeurs processés pour qd il y a moins de 1% dans la catégorie (0 dans le excel / mis à 0.1 pr faire la diff avec les zeros de pas de protection)
+    save_dir: str = None,
+    save_name: str = None,
+):
+    # Function for colormaps
+    # ======================
+    if colors is None:
+        colors = {
+            "strong": "#1b9e77",
+            "weak": "#d95f02",
+            "wh": "#7570b3",
+            "ramsar": "#e7298a",
+            "glacier": lcmap.get_color_of_code(code=4),
+            "deglaciated": lcmap.get_color_of_code(code=9),
+            "veget": lcmap.get_color_of_code(code=8),
+            "water": lcmap.get_color_of_code(code=5),
+        }
+
+    def get_cmap(color, color_under=None):
+        if color_under is None:
+            cmap = LinearSegmentedColormap.from_list(
+                name="mycmap", colors=[color, color], N=256
+            )
+            cmap.set_under(color)  # couleur sous vmin / pas la protection
+        else:
+            cmap = LinearSegmentedColormap.from_list("mycmap", ["white", color], N=256)
+            cmap.set_under(color_under)  # couleur sous vmin / pas la protection
+            cmap.set_bad(
+                "grey", alpha=0.2
+            )  # Couleur pour les NaN / categorie de landcover non exitantes
+        return cmap
+
+    # Format df to annotate heatmaps
+    def myformat(val):
+        try:
+            float(val)
+            if np.isnan(val):
+                return val
+            else:
+                return int(val)
+        except ValueError:
+            return val
+
+    df_annot = (
+        df_perc.replace(
+            {np.nan: -1}
+        )  # To force columns with only floats to convert to int
+        .replace({0.1: "<1"})  # Annotations for 0.1 (less than 15)
+        .map(lambda x: myformat(x))  # Convert to int and str
+        .replace(
+            {-1: ""}
+        )  # Convert back -1 to empty string (rather than NaN otherwise broadcast to float)
+    )
+
+    # ==========================================
+    #            PLOT per country
+    # ==========================================
+    for country in list(set(df_perc.index.get_level_values(0))):
+        # Get data
+        df = df_perc.loc[df_perc.index.get_level_values(0) == country]
+
+        # PLOT
+        fig, axes = plt.subplots(
+            5,
+            1,
+            figsize=(1.5, 1.5 * 5 / 4),
+            gridspec_kw={
+                "hspace": 0,
+                "wspace": 0,
+                "left": 0,
+                "right": 1,
+                "bottom": 0,
+                "top": 1,
+            },
+        )
+
+        # Total - first line
+        # ------------------
+        # Strong
+        df_plot = df[df.index.get_level_values(1) == "LIA"]
+        annot = df_annot.loc[df_plot.index]
+
+        sbn.heatmap(
+            df_plot,
+            annot=annot,
+            fmt="",
+            annot_kws={"weight": "bold", "fontsize": 11},
+            cmap=get_cmap(colors["strong"]),
+            cbar=False,
+            vmin=vmin,
+            vmax=5,
+            linewidths=1,
+            linecolor="k",
+            xticklabels=False,
+            yticklabels=False,
+            square=True,
+            ax=axes[0],
+        )
+
+        # Weak
+        df_plot.loc[:, "IUCN_strong"] = np.nan
+        annot.loc[:, "IUCN_strong"] = np.nan
+
+        sbn.heatmap(
+            df_plot,
+            annot=annot,
+            fmt="",
+            annot_kws={"weight": "bold", "fontsize": 11},
+            cmap=get_cmap(colors["weak"]),
+            cbar=False,
+            vmin=vmin,
+            vmax=5,
+            linewidths=1,
+            linecolor="k",
+            xticklabels=False,
+            yticklabels=False,
+            square=True,
+            ax=axes[0],
+        )
+
+        # WH
+        df_plot.loc[:, "IUCN_weak"] = np.nan
+        annot.loc[:, "IUCN_weak"] = np.nan
+
+        sbn.heatmap(
+            df_plot,
+            annot=annot,
+            fmt="",
+            annot_kws={"weight": "bold", "fontsize": 11},
+            cmap=get_cmap(colors["wh"]),
+            cbar=False,
+            vmin=vmin,
+            vmax=5,
+            linewidths=1,
+            linecolor="k",
+            xticklabels=False,
+            yticklabels=False,
+            square=True,
+            ax=axes[0],
+        )
+
+        # RAMSAR
+        df_plot.loc[:, "WH"] = np.nan
+        annot.loc[:, "WH"] = np.nan
+
+        # In case one want to add label inside plots
+        if country == "ALPS":
+            xlabel = False
+            ylabel = False
+        else:
+            xlabel = False
+            ylabel = False
+
+        sbn.heatmap(
+            df_plot,
+            annot=annot,
+            fmt="",
+            annot_kws={"weight": "bold", "fontsize": 11},
+            cmap=get_cmap(colors["ramsar"]),
+            cbar=False,
+            vmin=vmin,
+            vmax=5,
+            linewidths=1,
+            linecolor="k",
+            xticklabels=xlabel,
+            yticklabels=False,
+            square=True,
+            ax=axes[0],
+        )
+
+        # Glacier - second line
+        df_plot = df.loc[df.index.get_level_values(1) == "GLACIER"]
+        annot = df_annot.loc[df_plot.index]
+        sbn.heatmap(
+            df_plot,
+            annot=annot,
+            fmt="",
+            annot_kws={"weight": "normal", "color": "k"},
+            cmap=get_cmap(colors["glacier"], color_under="k"),
+            cbar=False,
+            vmin=vmin,
+            vmax=np.max([df_plot.max().max(), vmin + 1]),
+            linewidths=1,
+            linecolor="k",
+            xticklabels=False,
+            yticklabels=ylabel,
+            square=True,
+            ax=axes[1],
+        )
+
+        # Deglaciated - third line
+        df_plot = df.loc[df.index.get_level_values(1) == "DEGLACIATED"]
+        annot = df_annot.loc[df_plot.index]
+        sbn.heatmap(
+            df_plot,
+            annot=annot,
+            fmt="",
+            annot_kws={"weight": "normal", "color": "k"},
+            cmap=get_cmap(colors["deglaciated"], color_under="k"),
+            cbar=False,
+            vmin=vmin,
+            vmax=np.max([df_plot.max().max(), vmin + 1]),
+            linewidths=1,
+            linecolor="k",
+            xticklabels=False,
+            yticklabels=ylabel,
+            square=True,
+            ax=axes[2],
+        )
+
+        # Veget - fourth line
+        df_plot = df.loc[df.index.get_level_values(1) == "VEGET"]
+        annot = df_annot.loc[df_plot.index]
+        sbn.heatmap(
+            df_plot,
+            annot=annot,
+            fmt="",
+            annot_kws={"weight": "normal", "color": "k"},
+            cmap=get_cmap(colors["veget"], color_under="k"),
+            cbar=False,
+            vmin=vmin,
+            vmax=np.max([df_plot.max().max(), vmin + 1]),
+            linewidths=1,
+            linecolor="k",
+            xticklabels=False,
+            yticklabels=ylabel,
+            square=True,
+            ax=axes[3],
+        )
+
+        # Water - fifth line
+        df_plot = df.loc[df.index.get_level_values(1) == "WATER"]
+        annot = df_annot.loc[df_plot.index]
+        sbn.heatmap(
+            df_plot,
+            annot=annot,
+            fmt="",
+            annot_kws={"weight": "normal", "color": "k"},
+            cmap=get_cmap(colors["water"], color_under="k"),
+            cbar=False,
+            vmin=vmin,
+            vmax=np.max([df_plot.max().max(), vmin + 1]),
+            linewidths=1,
+            linecolor="k",
+            xticklabels=False,
+            yticklabels=ylabel,
+            square=True,
+            ax=axes[4],
+        )
+
+        # Settings
+        for ax in axes:
+            ax.set(xlabel="", ylabel="")
+            ax.tick_params(left=False, top=False)
+
+        if save_name is not None:
+            plt.savefig(os.path.join(save_dir, save_name + f"_{country}.png"), dpi=300)
 
 
 def plot_fig_SI_2(
