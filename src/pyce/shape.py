@@ -48,6 +48,18 @@ def remove_linestring(gdf: gpd.GeoDataFrame, include_points: bool = False):
     return gdf_clean.reset_index(drop=False).dissolve(by="index")
 
 
+def remove_point(gdf: gpd.GeoDataFrame):
+    """
+    Remove Point geometry within GeometryCollection from GeodataFrame object
+
+    :param gdf:
+    :return:
+    """
+    gdf_explode = gdf.explode(index_parts=False)
+    gdf_clean = gdf_explode[gdf_explode.geometry.type != "Point"]
+    return gdf_clean.reset_index(drop=False).dissolve(by="index")
+
+
 def clean_multipolygon_by_area(geom, area_min=20 * 20 * 2):
     """
     Remove sub-polygon from a MultiPolygon Geometry that are smaller than a given area
