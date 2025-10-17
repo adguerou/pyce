@@ -1,4 +1,5 @@
 import os
+from operator import index
 from typing import Union
 
 import numpy as np
@@ -460,7 +461,7 @@ def get_table_SI_4(table_SI_1, table_SI_2, lcmap_veget, stocks, factor):
     table_co_today["time"] = "2015"
     table_co_today_perc["time"] = "2015"
 
-    table_co_today["unit"] = "MtC"
+    table_co_today["unit"] = "xxtC"
     table_co_today_perc["unit"] = "%"
 
     # Future estimation
@@ -505,29 +506,231 @@ def get_table_SI_4(table_SI_1, table_SI_2, lcmap_veget, stocks, factor):
     table_co_future["time"] = "future"
     table_co_future_perc["time"] = "future"
 
-    table_co_future["unit"] = "MtC"
+    table_co_future["unit"] = "xxtC"
     table_co_future_perc["unit"] = "%"
 
     # Concatenation and formatting
     # ============================
-    table_SI_4 = (
-        pd.concat(
-            [table_co_today, table_co_today_perc, table_co_future, table_co_future_perc]
-        )
+    table_SI_4_co = (
+        pd.concat([table_co_today, table_co_future])
         .rename(index={"ALPS": "Z_ALPS"})
         .reset_index()
         .sort_values(["Country", "unit"])
         .set_index(["Country", "unit", "time"])
-        .reindex(["MtC", "%"], level=1)
+        .reindex(["xxtC", "%"], level=1)
+        .rename(index={"Z_ALPS": "ALPS"})
+        .round(1)
+    )
+    table_SI_co_str = (
+        table_SI_4_co.map(f"{{:.0f}}".format)
+        .replace({"nan": ""})
+        .astype(str)
+        .droplevel(1)
+    )
+
+    table_SI_4_perc = (
+        pd.concat([table_co_today_perc, table_co_future_perc])
+        .rename(index={"ALPS": "Z_ALPS"})
+        .reset_index()
+        .sort_values(["Country", "unit"])
+        .set_index(["Country", "unit", "time"])
+        .reindex(["xxtC", "%"], level=1)
         .rename(index={"Z_ALPS": "ALPS"})
         .round(1)
         .replace({100: np.nan})
-        .fillna("-")
-        # .astype(int)
-        # .replace({-1: "-"})
+    )
+    table_SI_perc_str = (
+        table_SI_4_perc.map(f"{{:.0f}}".format)
+        .replace({"nan": ""})
+        .astype(str)
+        .replace({"0": "<1"})
+        .astype(str)
+        .droplevel(1)
     )
 
-    return table_SI_4
+    # Append columns of alpine contribution of each country to the co stocks table
+    table_SI_co_str["Alpine contribution"] = (
+        table_SI_perc_str[["Total"]] + "%"
+    ).replace({"%": ""})
+
+    # Final formatting
+    table_SI_4 = (
+        table_SI_co_str.reset_index(level=1)
+        .rename(columns={"time": "[ktC]"})
+        .replace({"2015": "2020", "future": "potential"})
+        .set_index(["[ktC]"], append=True)
+        .sort_index()
+    )
+
+    return table_SI_4, table_SI_4_co, table_SI_4_perc
+
+
+def get_table_SI_fig3_pp(
+    pp_perc,
+):
+    def myformat(val):
+        try:
+            float(val)
+            if np.isnan(val):
+                return val
+            else:
+                return int(val)
+        except ValueError:
+            return val
+
+    # Reindex + format
+    pp_perc_format = (
+        pp_perc.reindex(["LIA", "GLACIER", "DEGLACIATED", "VEGET", "WATER"], level=1)
+        .replace({np.nan: -1})  # To force columns with only floats to convert to int
+        .replace({0.1: "<1"})  # Annotations for 0.1 (less than 15)
+        .map(lambda x: str(myformat(x)) + "%")  # Convert to int and str
+        .replace({"-1%": "-"})
+    )
+
+    return pp_perc_format
+
+
+def get_table_SI_fig3_ski(pp_ski, infra=None):
+    def myformat(val):
+        try:
+            float(val)
+            if np.isnan(val):
+                return val
+            else:
+                return round(val, 0)
+        except ValueError:
+            return val
+
+    # Reindex + format
+    df_ski = pp_ski.replace({"ALL": "ALPS"})
+
+    # Length
+    df_length = pd.concat(
+        [
+            df_ski,
+            pd.DataFrame(
+                data={
+                    "infra": infra,
+                    "Country": "SI",
+                    "LIA": np.nan,
+                    "GLACIER": np.nan,
+                    "DEICED": np.nan,
+                    "ALPS": np.nan,
+                },
+                index=[0],
+            ),
+        ]
+    )
+    df_length = df_length.set_index(["infra", "Country"])
+    df_length = df_length.loc[:, df_length.columns != "ALPS"]
+
+    # percentage
+    df_perc = df_length.div(df_length["LIA"], axis=0) * 100
+    df_perc["unit"] = "%"
+    df_perc["LIA"] = ""
+
+    df_length["unit"] = "[km²]"  # here otherwise cannot divide str
+
+    # Concat
+    df_ski = (
+        pd.concat([df_length, df_perc])
+        .set_index(["unit"], append=True)
+        .sort_index(level=[1, 2], ascending=[True, False])
+        .rename(columns={"DEICED": "DEGLACIATED"})
+        .replace({np.nan: -1})  # To force columns with only floats to convert to int
+        .map(lambda x: myformat(x))  # Convert to int and str
+        .replace({0: "<1"})  # Annotations for 0.1 (less than 15)
+        .replace({-1: "-"})
+    )
+
+    return df_ski
+
+
+def get_table_SI_fig3_dams(
+    df,
+):
+    # Add missing countries
+    df_all = pd.concat(
+        [
+            df,
+            pd.DataFrame(
+                [[np.nan] * len(df.columns)], index=["FR"], columns=df.columns
+            ),
+            pd.DataFrame(
+                [[np.nan] * len(df.columns)], index=["DE"], columns=df.columns
+            ),
+            pd.DataFrame(
+                [[np.nan] * len(df.columns)], index=["SI"], columns=df.columns
+            ),
+        ]
+    )
+
+    # Format
+    df_format = df_all.replace({"count": np.nan}, 0).astype({"count": int})
+    df_format["%_total_water_area"] = df_format["%_total_water_area"].apply(
+        "{:.0f}%".format
+    )
+    df_format["artificial_water_area"] = df_format["artificial_water_area"].apply(
+        "{:.1f}".format
+    )
+
+    df_format = (
+        df_format.rename(
+            columns={
+                "count": "Number",
+                "%_total_water_area": "Total water surface contribution",
+                "artificial_water_area": "Surface [km²]",
+            }
+        )
+        .replace({"nan": "-", "nan%": "-"})
+        .sort_index()
+    )
+
+    return df_format
+
+
+def get_table_SI_fig3_appendix(df, lcmap):
+    def rename_lc_cols(cols):
+        mydict = {}
+        for col in cols:
+            mydict[col] = lcmap.get_type_of_code(int(col[-1]))
+        return mydict
+
+    def myformat(val):
+        try:
+            float(val)
+            if np.isnan(val):
+                return val
+            elif val < 1:
+                return "<1"
+            else:
+                return f"{val:.0f}"
+        except ValueError:
+            return val
+
+    df_format = (
+        df.rename(
+            columns={
+                **{
+                    "Total": "Total length [km²]",
+                    "perc": "Part of total infrastructure [%]",
+                },
+                **rename_lc_cols(df.columns[:-2]),
+            },
+            index={
+                "type": "infrastructure",
+                "IUCN_strong": "IUCN+",
+                "IUCN_weak": "IUCN",
+                "WH": "UNESCO",
+            },
+        )
+        .map(lambda x: myformat(x))
+        .replace({np.nan: ""})
+    )
+
+    df_format["Part of total infrastructure [%]"] += "%"
+
+    return df_format
 
 
 def plot_donuts(
@@ -1272,7 +1475,7 @@ def plot_fig_1_donuts(
             outer_vals,
             radius=pie_size,
             colors=outer_colors,
-            autopct=lambda per: "({:.1f}%)".format(per),
+            autopct=lambda per: "({:.0f}%)".format(per),
             pctdistance=0.8,
             labels=[f"{surf:.0f}" for surf in outer_vals],
             labeldistance=0.82,
@@ -1406,7 +1609,7 @@ def plot_fig_1_donuts(
             outer_vals,
             radius=pie_size_ext,
             colors=outer_colors,
-            autopct="(%.1f%%)",
+            autopct="(%.0f%%)",
             pctdistance=0.86,
             labels=[f"{surf:.0f}" for surf in outer_vals],
             labeldistance=0.88,
@@ -1431,7 +1634,7 @@ def plot_fig_1_donuts(
         for at, lbl, perc, val in zip(autotexts, labels, outer_perc, outer_vals):
             at.update(
                 {
-                    "text": f"({perc:.1f}%)",
+                    "text": f"({perc:.0f}%)",
                     "fontsize": 10,
                     "fontstyle": "italic",
                     "horizontalalignment": "center",
@@ -1452,6 +1655,17 @@ def plot_fig_1_donuts(
         autotexts[0].update({"text": ""})
         labels[0].update({"text": ""})
 
+        # Update water percentage below 1% @ round 0
+        if (outer_perc[1] <= 0.5) and (df_lia_area.name != "SI"):
+            autotexts[1].update(
+                {
+                    "text": f"(<1%)",
+                    "fontsize": 10,
+                    "fontstyle": "italic",
+                    "horizontalalignment": "center",
+                    "verticalalignment": "center",
+                }
+            )
         if df_lia_area.name in df_veget_surf.index:
             if df_lia_area.name != "DE":
                 # Move water
@@ -1471,7 +1685,7 @@ def plot_fig_1_donuts(
                 update_lbl_pct(
                     wedges[3], autotexts[3], delta_ang=-8, delta_dist=0.3, rot=0
                 )
-            else:
+            else:  # DE
                 # Water
                 labels[1].update({"text": ""})
                 autotexts[1].update({"text": ""})
@@ -1704,17 +1918,17 @@ def plot_fig_1_donuts(
                 angles, heights, df_bars_area.values, indexes
             ):
                 if index == 0:
-                    the_lbl = f"{label:.1f}\n[km²]"
+                    the_lbl = f"{label:.0f}\n"  # [km²]"
                 else:
-                    the_lbl = f"{label:.1f}\n"
+                    the_lbl = f"{label:.0f}\n"
                 ax_bar.text(
                     x=angle + width / 2.0,
                     y=heights.max() + y_lower_limit + pad_bar_label,
                     s=the_lbl,
-                    ha="left",
+                    ha="center",
                     va="center",
                     fontsize=12,
-                    rotation=np.rad2deg(angle + width / 2.0),
+                    rotation=np.rad2deg(angle + width / 2.0) - 90,
                     rotation_mode="anchor",
                 )
 
