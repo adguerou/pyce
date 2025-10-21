@@ -629,7 +629,7 @@ def get_table_SI_fig3_ski(pp_ski, infra=None):
     df_perc["unit"] = "%"
     df_perc["LIA"] = ""
 
-    df_length["unit"] = "[km²]"  # here otherwise cannot divide str
+    df_length["unit"] = "[km]"  # here otherwise cannot divide str
 
     # Concat
     df_ski = (
