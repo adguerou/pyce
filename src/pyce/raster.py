@@ -289,7 +289,7 @@ def polygonize_raster(
     if mask is None:
         mask = ~data.isnull()
     if transform is None:
-        transform = data.rio.affine
+        transform = data.rio.transform()
 
     # Use polygonize from rasterio
     list_geoms = [
