@@ -129,6 +129,108 @@ def get_fig1_numbers(
     return surfaces_lia, surfaces_deglaciated, surfaces_veget
 
 
+def get_fig1_numbers_simplified(
+    df_stats,
+    round_dec: int = None,
+    col_name_country: str = "Country",
+    col_name_snow_and_ice: str = "snow_and_ice",
+    col_name_deglaciated: str = "deglaciated",
+    col_name_aquatic: str = "aquatic",
+    col_name_veget: str = "veget",
+    col_name_rocks: str = "rocks",
+    col_name_landcover="landcover",
+    val_rocks=0,
+    val_snow=4,
+    val_water=5,
+):
+    def _get_surf(df, groupby=None, columns=None, round=round_dec):
+        if columns is None:
+            columns = ["category"]
+        if groupby is None:
+            groupby = [col_name_country, "category"]
+
+        surf = lc_distrib.get_lc_surface(
+            df,
+            groupby=groupby,
+            reshape_index=[col_name_country],
+            reshape_columns=columns,
+            round_dec=round,
+            add_total=False,
+            slope_correction=False,
+        )
+
+        # Add alpine total
+        surf.loc["ALPS"] = surf.sum()
+
+        # Concat surface and percentage
+        surf = (surf.reset_index().set_index([col_name_country]).sort_index()).round(
+            round_dec
+        )
+
+        return surf
+
+    # Copy dataframe and create category column for which we derive stats
+    df_lia = df_stats.copy()
+    df_lia["category"] = None
+
+    # 1. Statistics over LIA area
+    # ===========================
+
+    # Create categories
+    # -----------------
+    # Snow & Ice
+    df_lia.loc[
+        df_lia[col_name_landcover] == val_snow, "category"
+    ] = col_name_snow_and_ice
+
+    # Deglaciated
+    df_lia.loc[
+        (df_lia.glacier == False) & (df_lia[col_name_landcover] != 4), "category"
+    ] = col_name_deglaciated
+
+    # Get surfaces and percentages
+    # ----------------------------
+    surfaces_lia = _get_surf(df_lia)
+
+    # 2. Statistics over DEGLACIATED area
+    # ===================================
+    df_deglaciated = df_lia.loc[
+        (df_lia.glacier == False) & (df_lia[col_name_landcover] != 4)
+    ]
+    df_deglaciated.loc[:, "category"] = None
+
+    # Create categories
+    # -----------------
+    # Rocks
+    df_deglaciated.loc[
+        df_deglaciated[col_name_landcover] == val_rocks, "category"
+    ] = col_name_rocks
+
+    # Veget
+    df_deglaciated.loc[df_deglaciated.veget == True, "category"] = col_name_veget
+
+    # Aquatic
+    df_deglaciated.loc[
+        df_deglaciated[col_name_landcover] == val_water, "category"
+    ] = col_name_aquatic
+
+    # Get surfaces and percentages
+    # ----------------------------
+    surfaces_deglaciated = _get_surf(df_deglaciated)
+
+    # 3. Statistics over VEGETATION area
+    # ==================================
+    df_veget = df_lia.loc[(df_lia.veget == True)]
+
+    surfaces_veget = _get_surf(
+        df_veget,
+        groupby=[col_name_country, col_name_landcover],
+        columns=col_name_landcover,
+    )
+
+    return surfaces_lia, surfaces_deglaciated, surfaces_veget
+
+
 def get_table_SI_1(
     df,
     lcmap: LandCoverMap,
@@ -2063,6 +2165,435 @@ def plot_fig_1_donuts(
             )
 
 
+def plot_fig_1_donuts_simplified(
+    df_lia: pd.DataFrame,
+    df_deglaciated: pd.DataFrame,
+    df_veget: pd.DataFrame,
+    lcmap: LandCoverMap,
+    col_snow_and_ice="snow_and_ice",
+    col_deglaciated="deglaciated",
+    col_aquatic="aquatic",
+    col_veget="veget",
+    col_rocks="rocks",
+    row_total_alps="ALPS",
+    save_dir=None,
+    save_name_ext=None,
+):
+    # general parameters
+    # ==================
+    # First donuts
+    ax_size = 1
+    pie_size = 0.6
+
+    # Second donuts
+    pie_size_ext = 0.9
+    wedge_size_ext = 0.2
+
+    # ================================
+    #               Plots
+    # =================================
+    for area in df_lia.index.values:
+        # ======
+        # Figure
+        # ======
+        fig, ax = plt.subplots(figsize=(4.5, 4.5))
+
+        plt.subplots_adjust(bottom=0, top=1, left=0, right=1, wspace=0.0, hspace=0.0)
+
+        ax.set_aspect("equal")
+        ax.set_xlim([-ax_size, ax_size])
+        ax.set_ylim([-ax_size, ax_size])
+
+        # =================
+        # Country selection
+        # =================
+        # Get only surface values from dataframes
+        df_lia_area = df_lia.loc[df_lia.index == area].values.flatten()
+
+        df_deglaciated_area = df_deglaciated.loc[
+            df_deglaciated.index == area
+        ].values.flatten()
+
+        df_veget = df_veget[["LC_6", "LC_1", "LC_2", "LC_3"]]  # reorder veget
+        colors = [lcmap.get_color_of_code(int(code[-1])) for code in df_veget.columns]
+        df_veget_area = df_veget.loc[df_veget.index == area].values.flatten()
+
+        # =========
+        # INNER PIE
+        # =========
+
+        # Define radius of inner pie
+        # --------------------------
+        max_radius = pie_size
+        max_surf = df_lia.loc[df_lia.index == row_total_alps].sum(axis=1).values[0]
+        surf_area = df_lia_area.sum()
+        delta_surf_max = max_surf - 1  # 1 km2 is SL
+        delta_radius_max = (
+            max_radius - 0.3
+        )  # must be <=max_radius / define the minimum size of inner pie
+
+        inner_radius = (
+            max_radius - (max_surf - surf_area) / delta_surf_max * delta_radius_max
+        )
+
+        # Colors
+        outer_colors = [
+            lcmap.get_color_of_code(code=9),  # deglaciated
+            lcmap.get_color_of_code(code=4),  # glacier
+        ]
+
+        # Plot pie
+        # --------
+        wedges, surf_lbl, perc_lbl = ax.pie(
+            df_lia_area,
+            radius=inner_radius,
+            colors=outer_colors,
+            autopct=lambda per: "{:.0f}%".format(per),
+            pctdistance=0.5,
+            labels=[f"{surf:.0f}" for surf in df_lia_area],
+            labeldistance=0.5,
+            wedgeprops=dict(edgecolor="k", linewidth=1),
+            counterclock=False,
+            startangle=0,
+        )
+
+        # Remove percent for deiced / surf for snow
+        # -----------------------------------------
+        surf_lbl[1].update({"text": ""})
+        perc_lbl[0].update({"text": ""})
+
+        if df_lia_area[1] == 0:  # no glacier
+            perc_lbl[1].update({"text": ""})
+
+        # FUNCTION
+        # ---------------------------------------------------------------------------
+        def update_lbl_pct(wedge, lbl_pct, delta_ang, delta_dist, rot=0):
+            lbl_pct_ang = (wedge.theta2 - wedge.theta1) / 2.0 + wedge.theta1
+            lbl_pct_dist = lbl_pct.get_position()[1] / np.sin(np.deg2rad(lbl_pct_ang))
+
+            update_ang = lbl_pct_ang + delta_ang
+            x = np.cos(np.deg2rad(update_ang)) * (lbl_pct_dist + delta_dist)
+            y = np.sin(np.deg2rad(update_ang)) * (lbl_pct_dist + delta_dist)
+
+            lbl_pct.update(dict(x=x, y=y, rotation=rot))
+
+        # ---------------------------------------------------------------------------
+
+        # ============================================================================
+        #                          Deglaciated plot
+        # =============================================================================
+        outer_vals = np.concatenate([df_deglaciated_area[::-1], [df_lia_area[1]]])
+        outer_colors = [
+            lcmap.get_color_of_code(code=8),  # vegetation
+            lcmap.get_color_of_code(code=0),  # rocks
+            lcmap.get_color_of_code(code=5),  # aquatic
+            "#ffffff00",  # snow / transparent
+        ]
+
+        # Plot pie
+        # --------
+        wedges, surf_lbl = ax.pie(
+            outer_vals,
+            radius=pie_size_ext,
+            colors=outer_colors,
+            labels=[f"{surf:.0f}" for surf in outer_vals],
+            labeldistance=1.1,
+            wedgeprops=dict(width=wedge_size_ext, edgecolor="k", linewidth=1),
+            counterclock=False,
+            startangle=0,
+        )
+
+        # Remove edgeline of snow
+        # =======================
+        surf_lbl[-1].update({"text": ""})  # remove glacier
+        if df_lia_area[1] != 0:  # No glacier at all / remove edgeline
+            wedges[-1].update({"edgecolor": "#ffffff00"})
+
+        # Remove 0 values
+        for surf, ind in zip(
+            df_deglaciated_area, range(len(df_deglaciated_area))
+        ):  # no veget
+            if surf == 0:
+                surf_lbl[ind].update({"text": ""})
+
+        # if df_lia_area.name in df_veget_surf.index:
+        #     if df_lia_area.name != "DE":
+        #         # Move water
+        #         update_lbl_pct(wedges[1], labels[1], delta_ang=0, delta_dist=0.3)
+        #         update_lbl_pct(
+        #             wedges[1], autotexts[1], delta_ang=8, delta_dist=0.3, rot=0
+        #         )
+        #
+        #         # Move rocks
+        #         update_lbl_pct(wedges[2], labels[2], delta_ang=0, delta_dist=0.0)
+        #         update_lbl_pct(
+        #             wedges[2], autotexts[2], delta_ang=45, delta_dist=0, rot=35
+        #         )
+        #
+        #         # Move veget
+        #         update_lbl_pct(wedges[3], labels[3], delta_ang=0, delta_dist=0.25)
+        #         update_lbl_pct(
+        #             wedges[3], autotexts[3], delta_ang=-8, delta_dist=0.3, rot=0
+        #         )
+        #     else:  # DE
+        #         # Water
+        #         labels[1].update({"text": ""})
+        #         autotexts[1].update({"text": ""})
+        #
+        #         # Veget
+        #         labels[3].update({"text": ""})
+        #         autotexts[3].update({"text": ""})
+        #
+        #         # Rocks
+        #         update_lbl_pct(
+        #             wedges[2], autotexts[2], delta_ang=80, delta_dist=0, rot=0
+        #         )  # percentage
+
+        # ========================================================
+        #                       BAR PLOT
+        # ========================================================
+
+        # ------------------------------------------------------------
+        #            Functions
+        # ------------------------------------------------------------
+        def get_perc_line(
+            val,
+            ymin=None,
+            ymax=None,
+            per_max=None,
+        ):
+            return ymin + val * ymax / per_max
+
+        def plot_perc_lines(
+            vals,
+            angles=None,
+            ymin=None,
+            ymax=None,
+            per_max=None,
+            color="k",
+            lw=0.6,
+            ls="--",
+            zorder=0,
+            ax=None,
+        ):
+            for val in vals:
+                ax.plot(
+                    angles,
+                    [
+                        get_perc_line(
+                            val,
+                            ymin=ymin,
+                            ymax=ymax,
+                            per_max=per_max,
+                        )
+                    ]
+                    * angles.shape[0],
+                    color=color,
+                    lw=lw,
+                    ls=ls,
+                    zorder=zorder,
+                )
+
+        # ------------------------------------------------------------
+        # ==========
+        # Parameters
+        # ==========
+        pad_bar_label = 0.0
+        bar_angle_start = np.pi / 10
+        bar_angle_span = np.pi / 2 - bar_angle_start
+
+        y_lower_limit = pie_size_ext - wedge_size_ext  # bottom of bars
+        y_pad_no_veget = 0.1
+
+        # Get scale for bar heights
+        # -------------------------
+        if area != row_total_alps:
+            df_bars_max = (df_veget.loc[df_veget.index == "CH"].iloc[0]).max()
+        else:
+            df_bars_max = (df_veget.loc[df_veget.index == row_total_alps].iloc[0]).max()
+
+        # Define subplots
+        # ---------------
+        ax_bar = ax.inset_axes([0, 0, 1, 1], polar=True, zorder=10)
+        ax_bar.set_ylim([0, ax_size])
+        ax_bar.set_frame_on(False)
+        ax_bar.xaxis.grid(False)
+        ax_bar.yaxis.grid(False)
+        ax_bar.set_xticks([])
+        ax_bar.set_yticks([])
+
+        # Start plot
+        # ==========
+        if len(df_veget_area) != 0 and df_veget_area.sum() != 0:
+            # Define the angles
+            # -----------------
+            indexes = list(range(0, len(df_veget_area)))
+            width = bar_angle_span / len(df_veget_area)
+            angles = [bar_angle_start + element * (width) for element in indexes]
+
+            heights = df_veget_area * (ax_size - y_lower_limit) / df_bars_max
+
+            # Draw bars
+            # ---------
+            bars = ax_bar.bar(
+                x=angles,
+                height=heights,
+                width=width,
+                bottom=y_lower_limit,
+                align="edge",
+                color=colors,
+            )
+
+            # Add labels
+            # ----------
+            for angle, height, label, index in zip(
+                angles, heights, df_veget_area, indexes
+            ):
+                ax_bar.text(
+                    x=angle + width / 2.0,
+                    y=height + y_lower_limit + pad_bar_label,
+                    s=f"{label:.0f}",
+                    ha="center",
+                    va="bottom",
+                    fontsize=12,
+                    rotation=np.rad2deg(angle + width / 2.0) - 90,
+                    rotation_mode="anchor",
+                )
+
+            # Add connection line
+            # -------------------
+            bottom_ls = "-"
+            bottom_lw = 1.8
+            bottom_color = "k"
+
+            p = wedges[-1]  # Outter pie / veget part
+            line_start_angle = (np.deg2rad(p.theta2 // 360) + bar_angle_start) / 2
+            bottom_line = np.linspace(line_start_angle, angles[-1] + width, num=50)
+
+            # Bottom arc
+            plot_perc_lines(
+                vals=[0],
+                angles=bottom_line,
+                ymin=y_lower_limit - 0.005,
+                ymax=heights.max(),
+                per_max=90,
+                color=bottom_color,
+                lw=bottom_lw,
+                ls=bottom_ls,
+                ax=ax_bar,
+            )
+
+            # Straigth line
+            y_bottom_line = get_perc_line(
+                val=0,
+                ymin=y_lower_limit - 0.005,
+                ymax=heights.max(),
+                per_max=90,
+            )
+            ax_bar.annotate(
+                "",
+                # The pie veget / arrow
+                xy=(
+                    0,
+                    y_bottom_line - wedge_size_ext / 3,
+                ),
+                # The arc bottom line / no arrow
+                xytext=(
+                    line_start_angle,
+                    y_bottom_line,
+                ),
+                xycoords="data",
+                textcoords="data",
+                arrowprops=dict(
+                    arrowstyle="-|>",
+                    ls=bottom_ls,
+                    lw=bottom_lw,
+                    color=bottom_color,
+                    patchB=None,
+                    shrinkA=0,
+                    shrinkB=0,
+                    connectionstyle="arc",
+                ),
+            )
+
+        # Connection line vegetation for no vegetation
+        # --------------------------------------------
+        else:
+            if area == "DE":
+                p_noveget = 360 + wedges[1].theta1  # Outter pie / rocks
+            else:
+                p_noveget = 30
+
+            line_start_angle = np.deg2rad(p_noveget + 5)
+            bottom_line = np.linspace(line_start_angle, np.deg2rad(70), num=50)
+
+            # Bottom arc
+            plot_perc_lines(
+                vals=[0],
+                angles=bottom_line,
+                ymin=y_lower_limit + y_pad_no_veget,
+                ymax=heights.max(),
+                per_max=90,
+                color=bottom_color,
+                lw=bottom_lw,
+                ls=bottom_ls,
+                ax=ax_bar,
+            )
+
+            # Straigth line
+            y_bottom_line = get_perc_line(
+                val=0,
+                ymin=y_lower_limit,
+                ymax=heights.max(),
+                per_max=90,
+            )
+            ax_bar.annotate(
+                "",
+                # The deglaciated pie / arrow
+                xy=(
+                    line_start_angle,
+                    y_bottom_line * 1.02,
+                ),
+                # The arc bottom line / no arrow
+                xytext=(
+                    line_start_angle,
+                    y_lower_limit + y_pad_no_veget,
+                ),
+                xycoords="data",
+                textcoords="data",
+                arrowprops=dict(
+                    arrowstyle="-|>",
+                    ls=bottom_ls,
+                    lw=bottom_lw,
+                    color=bottom_color,
+                    patchB=None,
+                    shrinkA=0,
+                    shrinkB=0,
+                    connectionstyle="arc",
+                ),
+            )
+
+            # Text
+            # ----
+            ax_bar.text(
+                bar_angle_span / 2.0,
+                pie_size_ext + 0.2,
+                "No vegetation\nNo water",
+                style="italic",
+                fontsize=11,
+                ha="right",
+            )
+
+        # if save_dir is not None:
+        #     plt.savefig(
+        #         os.path.join(
+        #             save_dir, f"donuts_{df_lia_area.name}_{save_name_ext}.png"
+        #         ),
+        #         dpi=300,
+        #         transparent=True,
+        #     )
+
+
 def plot_donuts_classic(
     df_donuts: pd.DataFrame,
     df_bars: pd.DataFrame,
@@ -2630,6 +3161,175 @@ def plot_fig_2a(
 
     if save_name is not None:
         plt.savefig(os.path.join(save_dir, save_name), dpi=300)
+
+
+def plot_fig_2a_vertical(
+    df,
+    lcmap,
+    table_percent_in=None,
+    table_percent_out=None,
+    y_violin="altitude",
+    white=False,
+    save_dir=None,
+    save_name=None,
+):
+    """
+
+    :param df:
+    :param lcmap:
+    :param table_percent_in:
+    :param table_percent_out:
+    :param x_violin:
+    :param save_dir:
+    :param save_name:
+    :return:
+
+    """
+
+    # Reorder lcmap for plottings
+    # ===========================
+    lcmap_reindex = lcmap.reindex(reverse=False, in_place=False)
+
+    # Figure
+    # ======
+    f1, axes = plt.subplots(1, 1, figsize=(6, 5))
+
+    #       Plot
+    # ==================
+    ax = sbn.violinplot(
+        data=df,
+        x="landcover",
+        y=y_violin,
+        hue="lia",
+        order=lcmap_reindex.get_code(),
+        hue_order=[True, False],
+        density_norm="width",
+        cut=0,
+        width=1,
+        split=True,
+        gap=0.2,
+        inner="quart",
+        legend=True,
+        ax=axes,
+    )
+
+    if white:
+        for l in ax.lines:
+            l.set_color("white")
+
+    # Colors and legend
+    # =================
+    colors_double = []
+    for color in list(lcmap_reindex.get_colors()):
+        colors_double.append(color)
+        colors_double.append(color)
+
+    handles = []
+    for (ind, violin), color in zip(
+        enumerate(ax.findobj(PolyCollection)), colors_double
+    ):
+        alpha = 1
+        if ind % 2 != 0:
+            alpha = 0.25
+        violin.set_facecolor(color)
+        if white:
+            violin.set_edgecolor("white")
+        violin.set_alpha(alpha=alpha)
+        if white:
+            edgecolor = "white"
+        else:
+            edgecolor = "k"
+        handles.append(
+            plt.Rectangle(
+                (0, 0), 0, 0, facecolor=color, alpha=alpha - 0.1, edgecolor=edgecolor
+            )
+        )
+
+    # Legend
+    leg = ax.legend(
+        handles=[tuple(handles[::2]), tuple(handles[1::2])],
+        labels=["LIA deglaciated", "Buffer zone"],
+        title=None,
+        handlelength=4,
+        loc=2,
+        frameon=False,
+        handler_map={tuple: HandlerTuple(ndivide=None, pad=0)},
+    )
+
+    if white:
+        texts = leg.get_texts()
+        for t in texts:
+            t.set_color("white")
+
+    ax.set_ylabel("Altitude [m a.s.l]", fontsize=13)
+    labels = [
+        lbl.replace(" v", "\nv").replace("& s", "&\ns")
+        for lbl in lcmap_reindex.get_type()
+    ]
+    ax.set_xticklabels(labels)
+    ax.set(xlabel=None)
+
+    # Add percentage for each violin
+    # ==============================
+    # Set positions
+    y_pos = (
+        df.groupby(["landcover"])["altitude"]
+        .max()
+        .reindex(lcmap_reindex.get_code())
+        .tolist()
+    )
+
+    # y_pos[1] = 4000  # modify rocks position
+    # y_pos[2] = 3500  # modify sparse position
+    x_pos = range(len(y_pos))
+
+    # Plots
+    # -----
+    # for i in range(len(x_pos)):
+    #     # LIA
+    #     ax.text(
+    #         x_pos[i] - 0.15,
+    #         y_pos[i],
+    #         f"{table_percent_in[i]}",
+    #         ha="right",
+    #     )
+    #     # OUT
+    #     ax.text(
+    #         x_pos[i] + 0.2,
+    #         y_pos[i],
+    #         f"{table_percent_out[i]}",
+    #         alpha=0.6,
+    #         ha="left",
+    #     )
+
+    # Grid and general parameters
+    # ===========================
+    sbn.despine(ax=ax, bottom=True)
+    ax.tick_params(bottom=False, rotation=0, pad=-5, axis="x")
+    ml = MultipleLocator(250)
+    ax.xaxis.set_minor_locator(ml)
+
+    ax.set_axisbelow(True)
+    ax.yaxis.grid(False)
+
+    if white:
+        ax.spines["left"].set_color("white")
+        ax.tick_params(axis="x", colors="white")
+        ax.tick_params(axis="y", colors="white")
+        ax.xaxis.label.set_color("white")
+        ax.yaxis.label.set_color("white")
+
+    ax.set_xlim([-1, 6])
+
+    plt.tight_layout()
+    plt.show()
+
+    if save_name is not None:
+        if white:
+            transpa = True
+        else:
+            transpa = False
+        plt.savefig(os.path.join(save_dir, save_name), dpi=300, transparent=transpa)
 
 
 def plot_fig_2b(
@@ -3251,9 +3951,9 @@ def plot_fig_SI_2(
             0.35, 0.65, title, weight="bold", transform=g.ax_marg_x.transAxes
         )
 
-    # X/Y lables
-    g.ax_joint.set_xlabel(xlabel=xplot[:-2], fontweight="bold")
-    g.ax_joint.set_ylabel(ylabel=yplot[:-2], fontweight="bold")
+    # X/Y labels
+    g.ax_joint.set_xlabel(xlabel=xplot[:-2] + f"$_{xplot[-1:]}$", fontweight="bold")
+    g.ax_joint.set_ylabel(ylabel=yplot[:-2] + f"$_{xplot[-1:]}$", fontweight="bold")
 
     # Grid
     plt.grid(ls="--")
