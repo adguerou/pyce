@@ -2189,6 +2189,12 @@ def plot_fig_1_donuts_simplified(
     pie_size_ext = 0.9
     wedge_size_ext = 0.2
 
+    # Sizing of the inner pie
+    max_radius = pie_size
+    max_surf = df_lia.loc[df_lia.index == row_total_alps].sum(axis=1).values[0]
+    delta_surf_max = max_surf - 1  # 1 km2 is SL
+    delta_radius_max = max_radius - 0.25  # define the minimum size of inner pie
+
     # ================================
     #               Plots
     # =================================
@@ -2196,7 +2202,7 @@ def plot_fig_1_donuts_simplified(
         # ======
         # Figure
         # ======
-        fig, ax = plt.subplots(figsize=(4.5, 4.5))
+        fig, ax = plt.subplots(figsize=(3, 3))
 
         plt.subplots_adjust(bottom=0, top=1, left=0, right=1, wspace=0.0, hspace=0.0)
 
@@ -2224,14 +2230,7 @@ def plot_fig_1_donuts_simplified(
 
         # Define radius of inner pie
         # --------------------------
-        max_radius = pie_size
-        max_surf = df_lia.loc[df_lia.index == row_total_alps].sum(axis=1).values[0]
         surf_area = df_lia_area.sum()
-        delta_surf_max = max_surf - 1  # 1 km2 is SL
-        delta_radius_max = (
-            max_radius - 0.3
-        )  # must be <=max_radius / define the minimum size of inner pie
-
         inner_radius = (
             max_radius - (max_surf - surf_area) / delta_surf_max * delta_radius_max
         )
