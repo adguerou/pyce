@@ -5,6 +5,7 @@ from typing import Union
 import numpy as np
 import pandas as pd
 import seaborn as sbn
+from geemap import pie_chart
 from matplotlib import pyplot as plt
 from matplotlib.collections import PolyCollection
 from matplotlib.colors import LinearSegmentedColormap
@@ -2397,7 +2398,7 @@ def plot_fig_1_donuts_simplified(
             lcmap.get_color_of_code(code=8),  # vegetation
             lcmap.get_color_of_code(code=0),  # rocks
             lcmap.get_color_of_code(code=5),  # aquatic
-            lcmap.get_color_of_code(code=4),  # snow / transparent
+            "#ffffff00",  # snow / transparent
         ]
 
         # Modify outer_vals for small values of water
@@ -3395,7 +3396,7 @@ def plot_fig_2a_vertical(
 
     # Figure
     # ======
-    f1, axes = plt.subplots(1, 1, figsize=(6, 5))
+    f1, axes = plt.subplots(1, 1, figsize=(5, 5))
 
     #       Plot
     # ==================
@@ -3405,19 +3406,26 @@ def plot_fig_2a_vertical(
         y=y_violin,
         hue="lia",
         order=lcmap_reindex.get_code(),
-        hue_order=[True, False],
+        hue_order=[False, True],
         density_norm="width",
         cut=0,
         width=1,
         split=True,
         gap=0.2,
         inner="quart",
-        legend=True,
+        legend=False,
         ax=axes,
     )
 
-    if white:
-        for l in ax.lines:
+    for l in ax.lines:
+        l.set_linestyle("None")
+        l.set_alpha(0.0)
+    for l in ax.lines[1::3]:
+        l.set_linestyle("dashed")
+        l.set_linewidth(0.8)
+        l.set_color("black")
+        l.set_alpha(1)
+        if white:
             l.set_color("white")
 
     # Colors and legend
@@ -3432,7 +3440,7 @@ def plot_fig_2a_vertical(
         enumerate(ax.findobj(PolyCollection)), colors_double
     ):
         alpha = 1
-        if ind % 2 != 0:
+        if ind % 2 == 0:
             alpha = 0.25
         violin.set_facecolor(color)
         if white:
@@ -3448,22 +3456,8 @@ def plot_fig_2a_vertical(
             )
         )
 
-    # Legend
-    leg = ax.legend(
-        handles=[tuple(handles[::2]), tuple(handles[1::2])],
-        labels=["LIA deglaciated", "Buffer zone"],
-        title=None,
-        handlelength=4,
-        loc=2,
-        frameon=False,
-        handler_map={tuple: HandlerTuple(ndivide=None, pad=0)},
-    )
-
-    if white:
-        texts = leg.get_texts()
-        for t in texts:
-            t.set_color("white")
-
+    # Labels
+    # ======
     ax.set_ylabel("Altitude [m a.s.l]", fontsize=13)
     labels = [
         lbl.replace(" v", "\nv").replace("& s", "&\ns")
@@ -3472,38 +3466,132 @@ def plot_fig_2a_vertical(
     ax.set_xticklabels(labels)
     ax.set(xlabel=None)
 
-    # Add percentage for each violin
-    # ==============================
-    # Set positions
-    y_pos = (
-        df.groupby(["landcover"])["altitude"]
-        .max()
-        .reindex(lcmap_reindex.get_code())
-        .tolist()
+    ax.set_yticklabels(ax.get_yticklabels(), rotation=60, ha="right")
+
+    # ===================
+    # Add percentage pies
+    # ===================
+    pie_size = 0.15
+    pie_delta = 0.14
+    pie_x = 0.2
+    pie_y = 0.75
+
+    # BUFFER ZONE
+    # ============
+    val_diff = 1
+    p_out = pd.DataFrame([float((p[:-1])) for p in table_percent_out])
+    p_out_plot = p_out.map(lambda val: val + val_diff if val < 80 else val)
+    p_out_plot = p_out_plot.map(
+        lambda val: val - val_diff * (p_out.shape[0] - 1) if val > 80 else val
     )
 
-    # y_pos[1] = 4000  # modify rocks position
-    # y_pos[2] = 3500  # modify sparse position
-    x_pos = range(len(y_pos))
+    ax_pie_out = f1.add_axes([pie_x, pie_y, pie_size, pie_size], zorder=0)
+    wedges, labels = ax_pie_out.pie(
+        p_out_plot.to_numpy().flatten(),
+        radius=1,
+        colors=lcmap_reindex.get_colors(),
+        labels=[f"{p:.1f}%" for p in list(p_out.to_numpy().flatten())],
+        explode=[0.5, 0.7, 0.2, 0.4, 0, 0.2],
+        labeldistance=1.2,
+        wedgeprops=dict(edgecolor="k", linewidth=0.5, alpha=0.4),
+        counterclock=False,
+        startangle=0,
+    )
+    # Modify position of labels
+    labels[0].update(  # Forest
+        dict(
+            x=labels[0].get_position()[0],
+            y=labels[0].get_position()[1] + 0.15,
+        )
+    )
+    labels[4].update(  # Rocks
+        dict(
+            text=f"{float(labels[4].get_text()[:-1]):.0f}%",
+            x=labels[4].get_position()[0] + 0.2,
+            y=labels[4].get_position()[1] + 0.2,
+        )
+    )
+    labels[5].update(  # water
+        dict(
+            x=labels[5].get_position()[0],
+            y=labels[5].get_position()[1] + 0.35,
+        )
+    )
+    ax_pie_out.text(
+        0.5,
+        1.1,
+        "Buffer\nzone",
+        ha="center",
+        fontsize=8,
+        weight="bold",
+        transform=ax_pie_out.transAxes,
+    )
 
-    # Plots
-    # -----
-    # for i in range(len(x_pos)):
-    #     # LIA
-    #     ax.text(
-    #         x_pos[i] - 0.15,
-    #         y_pos[i],
-    #         f"{table_percent_in[i]}",
-    #         ha="right",
-    #     )
-    #     # OUT
-    #     ax.text(
-    #         x_pos[i] + 0.2,
-    #         y_pos[i],
-    #         f"{table_percent_out[i]}",
-    #         alpha=0.6,
-    #         ha="left",
-    #     )
+    # LIA DEGLACIATED
+    # ===============
+    val_diff = 1.5
+    p_in = pd.DataFrame([float((p[:-1])) for p in table_percent_in])
+    p_in_plot = p_in.map(lambda val: val + val_diff if val < 80 else val)
+    p_in_plot = p_in_plot.map(
+        lambda val: val - val_diff * (p_in.shape[0] - 1) if val > 80 else val
+    )
+
+    ax_pie_in = f1.add_axes(
+        [pie_x + pie_delta + pie_size, pie_y, pie_size, pie_size], zorder=0
+    )
+    wedges, labels = ax_pie_in.pie(
+        p_in_plot.to_numpy().flatten(),
+        radius=1,
+        colors=lcmap_reindex.get_colors(),
+        labels=[f"{p:.1f}%" for p in list(p_in.to_numpy().flatten())],
+        labeldistance=1.3,
+        explode=[0.5, 0.7, 0.2, 0.4, 0, 0.2],
+        wedgeprops=dict(edgecolor="k", linewidth=0.5),
+        counterclock=False,
+        startangle=0,
+    )
+    # Modify position of labels
+    labels[0].update(  # Forest
+        dict(
+            x=labels[0].get_position()[0] - 0.2,
+            y=labels[0].get_position()[1] + 0.35,
+        )
+    )
+    labels[1].update(  # Shrubs
+        dict(
+            text=f"{float(labels[1].get_text()[:-1]):.0f}%",
+            x=labels[1].get_position()[0] - 0.1,
+            y=labels[1].get_position()[1] + 0.2,
+        )
+    )
+    labels[2].update(  # Rocks
+        dict(
+            x=labels[2].get_position()[0] - 0.2,
+            y=labels[2].get_position()[1],
+        )
+    )
+    labels[4].update(  # Rocks
+        dict(
+            text=f"{float(labels[4].get_text()[:-1]):.0f}%",
+            x=labels[4].get_position()[0] + 0.4,
+            y=labels[4].get_position()[1] + 0.5,
+        )
+    )
+    labels[5].update(  # water
+        dict(
+            x=labels[5].get_position()[0] - 0.2,
+            y=labels[5].get_position()[1] + 0.5,
+        )
+    )
+    ax_pie_in.text(
+        0.5,
+        1.1,
+        "LIA\ndeglaciated",
+        ha="center",
+        fontsize=8,
+        weight="bold",
+        transform=ax_pie_in.transAxes,
+    )
 
     # Grid and general parameters
     # ===========================
@@ -3513,19 +3601,10 @@ def plot_fig_2a_vertical(
     ax.xaxis.set_minor_locator(ml)
 
     ax.set_axisbelow(True)
-    ax.yaxis.grid(False)
-
-    if white:
-        ax.spines["left"].set_color("white")
-        ax.tick_params(axis="x", colors="white")
-        ax.tick_params(axis="y", colors="white")
-        ax.xaxis.label.set_color("white")
-        ax.yaxis.label.set_color("white")
-
+    ax.grid(ls="--", color="lightgrey")
+    ax.xaxis.grid(False)
     ax.set_xlim([-1, 6])
-
     plt.tight_layout()
-    plt.show()
 
     if save_name is not None:
         if white:
