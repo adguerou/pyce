@@ -2170,15 +2170,11 @@ def plot_fig_1_donuts_simplified(
     df_deglaciated: pd.DataFrame,
     df_veget: pd.DataFrame,
     lcmap: LandCoverMap,
-    col_snow_and_ice="snow_and_ice",
-    col_deglaciated="deglaciated",
-    col_aquatic="aquatic",
-    col_veget="veget",
-    col_rocks="rocks",
     row_total_alps="ALPS",
     save_dir=None,
     save_name_ext=None,
 ):
+    # ==================
     # general parameters
     # ==================
     # First donuts
@@ -2187,13 +2183,98 @@ def plot_fig_1_donuts_simplified(
 
     # Second donuts
     pie_size_ext = 0.9
-    wedge_size_ext = 0.2
+    wedge_size_ext = 0.25
 
     # Sizing of the inner pie
     max_radius = pie_size
+    min_radius = 0.15  # define the minimum size of inner pie
     max_surf = df_lia.loc[df_lia.index == row_total_alps].sum(axis=1).values[0]
-    delta_surf_max = max_surf - 1  # 1 km2 is SL
-    delta_radius_max = max_radius - 0.25  # define the minimum size of inner pie
+    min_surf = 1  # 1 km2 is SL
+
+    # Layout parameters
+    lw_inner_pie = 1
+    lw_outter_pie = 1.5
+    lw_glacier = 1.4
+    fontsize_km = 14
+    fontsize_bar = 12
+    fontsize_perc = 9
+
+    # ==================
+    #     FUNCTIONS
+    # ==================
+
+    # Define radius of inner pie
+    # --------------------------
+    def get_inner_radius(
+        surf_area,
+        max_radius=max_radius,
+        min_radius=min_radius,
+        max_surf=max_surf,
+        min_surf=min_surf,
+        log=False,
+    ):
+        if log:
+            inner_radius = max_radius - np.log(
+                1 + (max_surf - surf_area) / (max_surf - min_surf)
+            ) * (max_radius - min_radius)
+
+        else:
+            inner_radius = max_radius - (
+                (max_surf - surf_area) / (max_surf - min_surf)
+            ) * (max_radius - min_radius)
+        return inner_radius
+
+    # Label editing in polar plot
+    # ---------------------------
+    def update_lbl_pct(wedge, lbl_pct, delta_ang, delta_dist, rot=0):
+        lbl_pct_ang = (wedge.theta2 - wedge.theta1) / 2.0 + wedge.theta1
+        lbl_pct_dist = lbl_pct.get_position()[1] / np.sin(np.deg2rad(lbl_pct_ang))
+
+        update_ang = lbl_pct_ang + delta_ang
+        x = np.cos(np.deg2rad(update_ang)) * (lbl_pct_dist + delta_dist)
+        y = np.sin(np.deg2rad(update_ang)) * (lbl_pct_dist + delta_dist)
+
+        lbl_pct.update(dict(x=x, y=y, rotation=rot))
+
+    # Bar plot functions
+    # ----------------------
+    def get_perc_line(
+        val,
+        ymin=None,
+        ymax=None,
+        per_max=None,
+    ):
+        return ymin + val * ymax / per_max
+
+    def plot_perc_lines(
+        vals,
+        angles=None,
+        ymin=None,
+        ymax=None,
+        per_max=None,
+        color="k",
+        lw=0.6,
+        ls="--",
+        zorder=0,
+        ax=None,
+    ):
+        for val in vals:
+            ax.plot(
+                angles,
+                [
+                    get_perc_line(
+                        val,
+                        ymin=ymin,
+                        ymax=ymax,
+                        per_max=per_max,
+                    )
+                ]
+                * angles.shape[0],
+                color=color,
+                lw=lw,
+                ls=ls,
+                zorder=zorder,
+            )
 
     # ================================
     #               Plots
@@ -2202,9 +2283,10 @@ def plot_fig_1_donuts_simplified(
         # ======
         # Figure
         # ======
-        fig, ax = plt.subplots(figsize=(3, 3))
-
-        plt.subplots_adjust(bottom=0, top=1, left=0, right=1, wspace=0.0, hspace=0.0)
+        fig, ax = plt.subplots(figsize=(3.2, 3.2))
+        plt.subplots_adjust(
+            bottom=0, top=1, left=0.01, right=0.99, wspace=0.0, hspace=0.0
+        )  # important to adjust polar frame to inner pies
 
         ax.set_aspect("equal")
         ax.set_xlim([-ax_size, ax_size])
@@ -2224,59 +2306,88 @@ def plot_fig_1_donuts_simplified(
         colors = [lcmap.get_color_of_code(int(code[-1])) for code in df_veget.columns]
         df_veget_area = df_veget.loc[df_veget.index == area].values.flatten()
 
-        # =========
-        # INNER PIE
-        # =========
+        # =============================================
+        #                     INNER PIE
+        # ==============================================
 
         # Define radius of inner pie
         # --------------------------
         surf_area = df_lia_area.sum()
-        inner_radius = (
-            max_radius - (max_surf - surf_area) / delta_surf_max * delta_radius_max
-        )
+        inner_radius = get_inner_radius(surf_area)
 
+        # Plot inner circle with changing size + pie
+        # ------------------------------------------
+        circle = plt.Circle(
+            (0, 0), inner_radius, facecolor="None", edgecolor="k", linewidth=lw_glacier
+        )
+        ax.add_patch(circle)
+
+        #          PIE
+        # ========================
         # Colors
         outer_colors = [
             lcmap.get_color_of_code(code=9),  # deglaciated
-            lcmap.get_color_of_code(code=4),  # glacier
+            "#ffffff00",  # glacier
         ]
 
         # Plot pie
-        # --------
         wedges, surf_lbl, perc_lbl = ax.pie(
             df_lia_area,
-            radius=inner_radius,
+            radius=max_radius,
             colors=outer_colors,
             autopct=lambda per: "{:.0f}%".format(per),
-            pctdistance=0.5,
+            pctdistance=0.2,
             labels=[f"{surf:.0f}" for surf in df_lia_area],
             labeldistance=0.5,
-            wedgeprops=dict(edgecolor="k", linewidth=1),
+            wedgeprops=dict(edgecolor="k", linewidth=lw_inner_pie),
             counterclock=False,
             startangle=0,
         )
 
-        # Remove percent for deiced / surf for snow
-        # -----------------------------------------
-        surf_lbl[1].update({"text": ""})
-        perc_lbl[0].update({"text": ""})
+        # Add circle on top of deglaciated for SI as it takes 100%
+        if area == "SI":
+            circle = plt.Circle(
+                (0, 0),
+                inner_radius / 2,  # reduce the true size as it appears visually larger
+                facecolor="None",
+                edgecolor="k",
+                linewidth=lw_glacier,
+                ls="--",
+            )
+            ax.add_patch(circle)
 
-        if df_lia_area[1] == 0:  # no glacier
-            perc_lbl[1].update({"text": ""})
+        # Set fontsize
+        # ------------
+        for sb, pb in surf_lbl, perc_lbl:
+            sb.set_fontsize(fontsize_km)
+            pb.set_fontsize(fontsize_perc)
 
-        # FUNCTION
-        # ---------------------------------------------------------------------------
-        def update_lbl_pct(wedge, lbl_pct, delta_ang, delta_dist, rot=0):
-            lbl_pct_ang = (wedge.theta2 - wedge.theta1) / 2.0 + wedge.theta1
-            lbl_pct_dist = lbl_pct.get_position()[1] / np.sin(np.deg2rad(lbl_pct_ang))
+        # Label editing
+        # =============
+        surf_lbl[1].update({"text": ""})  # remove surf of glacier
+        wedges[1].update({"edgecolor": "#ffffff00"})  # put glacier transparent
+        perc_lbl[0].update({"text": ""})  # remove perc of deglaciated
 
-            update_ang = lbl_pct_ang + delta_ang
-            x = np.cos(np.deg2rad(update_ang)) * (lbl_pct_dist + delta_dist)
-            y = np.sin(np.deg2rad(update_ang)) * (lbl_pct_dist + delta_dist)
+        # Inner Glacier DE and SI
+        if area == "DE":
+            update_lbl_pct(wedges[1], perc_lbl[1], delta_ang=0, delta_dist=0.2, rot=0)
+        if area == "SI":
+            update_lbl_pct(wedges[1], perc_lbl[1], delta_ang=0, delta_dist=0.1, rot=0)
 
-            lbl_pct.update(dict(x=x, y=y, rotation=rot))
+        # Update deglaciated surf for all
+        surf_lbl[0].update({"horizontalalignment": "center", "color": "white"})
+        ax.text(
+            surf_lbl[0].get_position()[0],
+            surf_lbl[0].get_position()[1] - 0.1,
+            "km²",
+            va="top",
+            ha="center",
+            fontsize=10,
+            color="white",
+        )
 
-        # ---------------------------------------------------------------------------
+        # Country
+        ax.text(-pie_size_ext, pie_size_ext, area, fontsize=16, weight="bold")
 
         # ============================================================================
         #                          Deglaciated plot
@@ -2286,114 +2397,57 @@ def plot_fig_1_donuts_simplified(
             lcmap.get_color_of_code(code=8),  # vegetation
             lcmap.get_color_of_code(code=0),  # rocks
             lcmap.get_color_of_code(code=5),  # aquatic
-            "#ffffff00",  # snow / transparent
+            lcmap.get_color_of_code(code=4),  # snow / transparent
         ]
 
-        # Plot pie
-        # --------
+        # Modify outer_vals for small values of water
+        # -------------------------------------------
+        shift = 0
+        if outer_vals[2] != 0:
+            shift_water_percent = 0.01
+            shift = outer_vals[1] * shift_water_percent
+            outer_vals[1] -= shift  # remove to rocks
+            outer_vals[2] += shift  # add to water
+
         wedges, surf_lbl = ax.pie(
             outer_vals,
             radius=pie_size_ext,
             colors=outer_colors,
             labels=[f"{surf:.0f}" for surf in outer_vals],
             labeldistance=1.1,
-            wedgeprops=dict(width=wedge_size_ext, edgecolor="k", linewidth=1),
+            wedgeprops=dict(
+                width=wedge_size_ext, edgecolor="k", linewidth=lw_outter_pie
+            ),
             counterclock=False,
             startangle=0,
         )
 
+        # Put back correct values of surfaces
+        outer_vals[1] += shift  # add back to rocks
+        outer_vals[2] -= shift  # remove back to water
+        for sb, ov in zip(surf_lbl, outer_vals):
+            sb.update({"text": f"{ov:.0f}"})
+
         # Remove edgeline of snow
-        # =======================
         surf_lbl[-1].update({"text": ""})  # remove glacier
-        if df_lia_area[1] != 0:  # No glacier at all / remove edgeline
-            wedges[-1].update({"edgecolor": "#ffffff00"})
+        if df_lia_area[1] != 0:  # When glacier / remove edgeline
+            wedges[-1].update({"linewidth": 0})
+        # Set fontsize
+        for sb in surf_lbl:
+            sb.set_fontsize(fontsize_km)
 
         # Remove 0 values
+        # ---------------
         for surf, ind in zip(
             df_deglaciated_area, range(len(df_deglaciated_area))
         ):  # no veget
             if surf == 0:
                 surf_lbl[ind].update({"text": ""})
 
-        # if df_lia_area.name in df_veget_surf.index:
-        #     if df_lia_area.name != "DE":
-        #         # Move water
-        #         update_lbl_pct(wedges[1], labels[1], delta_ang=0, delta_dist=0.3)
-        #         update_lbl_pct(
-        #             wedges[1], autotexts[1], delta_ang=8, delta_dist=0.3, rot=0
-        #         )
-        #
-        #         # Move rocks
-        #         update_lbl_pct(wedges[2], labels[2], delta_ang=0, delta_dist=0.0)
-        #         update_lbl_pct(
-        #             wedges[2], autotexts[2], delta_ang=45, delta_dist=0, rot=35
-        #         )
-        #
-        #         # Move veget
-        #         update_lbl_pct(wedges[3], labels[3], delta_ang=0, delta_dist=0.25)
-        #         update_lbl_pct(
-        #             wedges[3], autotexts[3], delta_ang=-8, delta_dist=0.3, rot=0
-        #         )
-        #     else:  # DE
-        #         # Water
-        #         labels[1].update({"text": ""})
-        #         autotexts[1].update({"text": ""})
-        #
-        #         # Veget
-        #         labels[3].update({"text": ""})
-        #         autotexts[3].update({"text": ""})
-        #
-        #         # Rocks
-        #         update_lbl_pct(
-        #             wedges[2], autotexts[2], delta_ang=80, delta_dist=0, rot=0
-        #         )  # percentage
-
         # ========================================================
         #                       BAR PLOT
         # ========================================================
 
-        # ------------------------------------------------------------
-        #            Functions
-        # ------------------------------------------------------------
-        def get_perc_line(
-            val,
-            ymin=None,
-            ymax=None,
-            per_max=None,
-        ):
-            return ymin + val * ymax / per_max
-
-        def plot_perc_lines(
-            vals,
-            angles=None,
-            ymin=None,
-            ymax=None,
-            per_max=None,
-            color="k",
-            lw=0.6,
-            ls="--",
-            zorder=0,
-            ax=None,
-        ):
-            for val in vals:
-                ax.plot(
-                    angles,
-                    [
-                        get_perc_line(
-                            val,
-                            ymin=ymin,
-                            ymax=ymax,
-                            per_max=per_max,
-                        )
-                    ]
-                    * angles.shape[0],
-                    color=color,
-                    lw=lw,
-                    ls=ls,
-                    zorder=zorder,
-                )
-
-        # ------------------------------------------------------------
         # ==========
         # Parameters
         # ==========
@@ -2401,8 +2455,12 @@ def plot_fig_1_donuts_simplified(
         bar_angle_start = np.pi / 10
         bar_angle_span = np.pi / 2 - bar_angle_start
 
-        y_lower_limit = pie_size_ext - wedge_size_ext  # bottom of bars
+        y_lower_limit = pie_size_ext - wedge_size_ext / 1.5  # bottom of bars
         y_pad_no_veget = 0.1
+
+        bottom_ls = "-"
+        bottom_lw = 1.8
+        bottom_color = "k"
 
         # Get scale for bar heights
         # -------------------------
@@ -2454,17 +2512,13 @@ def plot_fig_1_donuts_simplified(
                     s=f"{label:.0f}",
                     ha="center",
                     va="bottom",
-                    fontsize=12,
+                    fontsize=fontsize_bar,
                     rotation=np.rad2deg(angle + width / 2.0) - 90,
                     rotation_mode="anchor",
                 )
 
             # Add connection line
             # -------------------
-            bottom_ls = "-"
-            bottom_lw = 1.8
-            bottom_color = "k"
-
             p = wedges[-1]  # Outter pie / veget part
             line_start_angle = (np.deg2rad(p.theta2 // 360) + bar_angle_start) / 2
             bottom_line = np.linspace(line_start_angle, angles[-1] + width, num=50)
@@ -2576,21 +2630,171 @@ def plot_fig_1_donuts_simplified(
             # ----
             ax_bar.text(
                 bar_angle_span / 2.0,
-                pie_size_ext + 0.2,
+                pie_size_ext + 0.28,
                 "No vegetation\nNo water",
                 style="italic",
                 fontsize=11,
                 ha="right",
             )
 
-        # if save_dir is not None:
-        #     plt.savefig(
-        #         os.path.join(
-        #             save_dir, f"donuts_{df_lia_area.name}_{save_name_ext}.png"
-        #         ),
-        #         dpi=300,
-        #         transparent=True,
-        #     )
+        if save_dir is not None:
+            plt.savefig(
+                os.path.join(
+                    save_dir,
+                    f"donuts_{area}_{save_name_ext}.png",
+                ),
+                dpi=300,
+                transparent=True,
+            )
+
+
+def plot_fig_1_donuts_simplified_legend(
+    df_lia, df_deglaciated, lcmap, row_total_alps="ALPS", save_dir=None, save_name=None
+):
+    # general parameters
+    # ==================
+    # First donuts
+    ax_size = 1
+    pie_size = 0.6
+
+    # Second donuts
+    pie_size_ext = 0.9
+    wedge_size_ext = 0.25
+
+    # Sizing of the inner pie
+    max_radius = pie_size
+    min_radius = 0.15  # define the minimum size of inner pie
+    max_surf = df_lia.loc[df_lia.index == row_total_alps].sum(axis=1).values[0]
+    min_surf = 1  # 1 km2 is SL
+
+    # Layout parameters
+    lw_pie = 1
+    lw_glacier = 1.0
+
+    # ======
+    # Figure
+    # ======
+    fig, ax = plt.subplots(figsize=(3.2, 3.2))
+    plt.subplots_adjust(
+        bottom=0, top=1, left=0.01, right=0.99, wspace=0.0, hspace=0.0
+    )  # important to adjust polar frame to inner pies
+
+    ax.set_aspect("equal")
+    ax.set_xlim([-ax_size, ax_size])
+    ax.set_ylim([-ax_size, ax_size])
+
+    # =================
+    # Country selection
+    # =================
+    # Get only surface values from dataframes
+    df_lia_area = df_lia.loc[df_lia.index == row_total_alps].values.flatten()
+
+    df_deglaciated_area = df_deglaciated.loc[
+        df_deglaciated.index == row_total_alps
+    ].values.flatten()
+
+    # =========
+    # INNER PIE
+    # =========
+
+    # Define radius of inner pie
+    # --------------------------
+    def inner_radius(
+        surf_area,
+        max_radius=max_radius,
+        min_radius=min_radius,
+        max_surf=max_surf,
+        min_surf=min_surf,
+        log=False,
+    ):
+        if log:
+            inner_radius = max_radius - np.log(
+                1 + (max_surf - surf_area) / (max_surf - min_surf)
+            ) * (max_radius - min_radius)
+
+        else:
+            inner_radius = max_radius - (
+                (max_surf - surf_area) / (max_surf - min_surf)
+            ) * (max_radius - min_radius)
+        return inner_radius
+
+    # Plot inner circle with changing size + pie
+    # ------------------------------------------
+    surf_area = [1, 500, 900, 2000, df_lia_area.sum()]
+    circ_size = [inner_radius(s) for s in surf_area]
+    circ_size[0] /= 2
+
+    for cs in circ_size:
+        circle = plt.Circle(
+            (0, 0),
+            cs,
+            facecolor="None",
+            edgecolor="k",
+            linewidth=lw_glacier,
+        )
+        ax.add_patch(circle)
+
+    # Colors
+    outer_colors = [
+        lcmap.get_color_of_code(code=9),  # deglaciated
+        "#ffffff00",  # glacier
+    ]
+
+    # Plot pie
+    wedges = ax.pie(
+        df_lia_area,
+        radius=max_radius,
+        colors=outer_colors,
+        labels=None,
+        wedgeprops=dict(edgecolor="k", linewidth=lw_pie),
+        counterclock=False,
+        startangle=0,
+    )
+
+    # ============================================================================
+    #                          Deglaciated plot
+    # =============================================================================
+    outer_vals = np.concatenate([df_deglaciated_area[::-1], [df_lia_area[1]]])
+    outer_colors = [
+        lcmap.get_color_of_code(code=8),  # vegetation
+        lcmap.get_color_of_code(code=0),  # rocks
+        lcmap.get_color_of_code(code=5),  # aquatic
+        lcmap.get_color_of_code(code=4),  # snow / transparent
+    ]
+
+    # Modify outer_vals for small values of water
+    # -------------------------------------------
+    shift = 0
+    if outer_vals[2] != 0:
+        shift_water_percent = 0.01
+        shift = outer_vals[1] * shift_water_percent
+        outer_vals[1] -= shift  # remove to rocks
+        outer_vals[2] += shift  # add to water
+
+    # Plot pie
+    # --------
+    wedges, label = ax.pie(
+        outer_vals,
+        radius=pie_size_ext,
+        colors=outer_colors,
+        wedgeprops=dict(width=wedge_size_ext, edgecolor="k", linewidth=lw_pie),
+        counterclock=False,
+        startangle=0,
+    )
+
+    # Remove edgeline of snow
+    # =======================
+    wedges[-1].update({"edgecolor": "#ffffff00"})
+
+    if save_dir is not None:
+        plt.savefig(
+            os.path.join(
+                save_dir,
+                f"donuts_{save_name}.png",
+            ),
+            dpi=300,
+            transparent=True,
+        )
 
 
 def plot_donuts_classic(
