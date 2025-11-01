@@ -3398,6 +3398,7 @@ def plot_fig_2a_vertical(
     # ======
     f1, axes = plt.subplots(1, 1, figsize=(5, 5))
 
+    # ==================
     #       Plot
     # ==================
     ax = sbn.violinplot(
@@ -3592,6 +3593,53 @@ def plot_fig_2a_vertical(
         weight="bold",
         transform=ax_pie_in.transAxes,
     )
+
+    # Add percentage for each violin
+    # ==============================
+    # Get median altitudes
+    altitudes_median = (
+        (df.groupby(["lia", "landcover"])["altitude"])
+        .median()
+        .to_frame()
+        .reindex(lcmap_reindex.get_code(), level=1)
+        .reset_index(level=1)
+    )
+
+    alt_buf = altitudes_median.loc[
+        altitudes_median.index == False, "altitude"
+    ].reset_index(drop=True)
+    alt_lia = altitudes_median.loc[
+        altitudes_median.index == True, "altitude"
+    ].reset_index(drop=True)
+    diff_alt = alt_lia - alt_buf
+
+    # Get altitude max
+    altitudes_max = (
+        (df.groupby(["lia", "landcover"])["altitude"])
+        .max()
+        .to_frame()
+        .reindex(lcmap_reindex.get_code(), level=1)
+        .reset_index(level=1)
+    )
+    y_pos = altitudes_max.loc[altitudes_max.index == True, "altitude"].to_list()
+    x_pos = range(len(y_pos))
+
+    y_pos[2] -= 200  # modify sparse position
+    y_pos[4] = 3300  # modify rocks position
+    y_pos[5] = 3100  # modify rocks position
+
+    # Plots
+    # -----
+    for i in range(len(x_pos)):
+        ax.text(
+            x_pos[i] + 0.2,
+            y_pos[i],
+            f"{diff_alt[i]:.0f} m",
+            ha="left",
+            fontsize=8,
+            rotation=90,
+            color="grey",
+        )
 
     # Grid and general parameters
     # ===========================
