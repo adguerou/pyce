@@ -3887,16 +3887,20 @@ def plot_fig_2b(
     # General parameters
     # =================
     h1.xaxis.set_label_position("top")
-    h1.set_xlabel(dict_params["xlabel"], fontsize=13, labelpad=8)
     h1.set_ylabel(dict_params["label_margins"], fontsize=10)
-    h1.set_yticklabels(labels=["out", "in"], fontsize=10)
+    h1.yaxis.set_tick_params(which="major", pad=25)
+    h1.set_yticklabels(
+        labels=["Buffer\nzone", "LIA\ndegla."],
+        ha="center",
+        fontsize=8,
+        rotation=90,
+    )
     sbn.despine(ax=h1, left=True, bottom=True, top=False)
     h1.tick_params(left=False, bottom=False, labelbottom=False, top=True, labeltop=True)
 
     h2.yaxis.set_label_position("right")
     h2.set_xlabel(dict_params["label_margins"], fontsize=10)
-    h2.set_xticklabels(labels=["in", "out"], fontsize=10)
-    h2.set_ylabel(dict_params["ylabel"], fontsize=13, labelpad=8)
+    h2.set_xticklabels(labels=["LIA\ndegla.", "Buffer\nzone"], fontsize=8)
     sbn.despine(ax=h2, left=True, bottom=True, right=False)
     h2.tick_params(
         bottom=False, left=False, labelleft=False, right=True, labelright=True
