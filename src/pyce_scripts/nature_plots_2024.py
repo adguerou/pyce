@@ -4413,6 +4413,8 @@ def plot_fig_SI_5(
     ax.set_xlabel("Lake surface [km²]", fontsize=12)
     ax.set_ylabel("Lake volume [1e6 m³]", fontsize=12)
 
+    ax.vlines(28000 * 1e-6, 1e-8, 1e6, ls="--", color="darkred", lw=1.5)
+    ax.set_ylim([1 * 1e-7, 1 * 1e4])
     ax.legend(fontsize=10)
     plt.tight_layout()
 
