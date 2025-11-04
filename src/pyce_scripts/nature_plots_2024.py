@@ -752,28 +752,16 @@ def get_table_SI_fig3_ski(pp_ski, infra=None):
 def get_table_SI_fig3_dams(
     df,
 ):
-    # Add missing countries
-    df_all = pd.concat(
-        [
-            df,
-            pd.DataFrame(
-                [[np.nan] * len(df.columns)], index=["FR"], columns=df.columns
-            ),
-            pd.DataFrame(
-                [[np.nan] * len(df.columns)], index=["DE"], columns=df.columns
-            ),
-            pd.DataFrame(
-                [[np.nan] * len(df.columns)], index=["SI"], columns=df.columns
-            ),
-        ]
-    )
-
     # Format
-    df_format = df_all.replace({"count": np.nan}, 0).astype({"count": int})
+    df_format = df.replace({"count": np.nan}, 0).astype({"count": int})
     df_format["%_total_water_area"] = df_format["%_total_water_area"].apply(
         "{:.0f}%".format
     )
     df_format["artificial_water_area"] = df_format["artificial_water_area"].apply(
+        "{:.1f}".format
+    )
+    df_format["Total_water_area"] = df_format["Total_water_area"].apply("{:.1f}".format)
+    df_format["Natural_water_area"] = df_format["Natural_water_area"].apply(
         "{:.1f}".format
     )
 
@@ -781,6 +769,8 @@ def get_table_SI_fig3_dams(
         df_format.rename(
             columns={
                 "count": "Number",
+                "Total_water_area": "Total water surface [km²]",
+                "Natural_water_area": "Natural water surface [km²]",
                 "%_total_water_area": "Total water surface contribution",
                 "artificial_water_area": "Surface [km²]",
             }
@@ -4413,7 +4403,7 @@ def plot_fig_SI_5(
     ax.set_xlabel("Lake surface [km²]", fontsize=12)
     ax.set_ylabel("Lake volume [1e6 m³]", fontsize=12)
 
-    ax.vlines(28000 * 1e-6, 1e-8, 1e6, ls="--", color="darkred", lw=1.5)
+    ax.vlines(28000 * 1e-6, 1e-8, 1.0e6, ls="--", color="darkred", lw=1.5)
     ax.set_ylim([1 * 1e-7, 1 * 1e4])
     ax.legend(fontsize=10)
     plt.tight_layout()
