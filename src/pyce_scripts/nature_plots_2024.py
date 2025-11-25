@@ -569,53 +569,53 @@ def get_table_SI_4(table_SI_1, table_SI_2, lcmap_veget, stocks, factor):
 
     # Future estimation
     # =================
-    # Get future surface for each vegetation type
-    surf_deglaciated = (
-        table_SI_1.loc[table_SI_1.zone == "[km²]", ["Country", "deglaciated"]]
-        .set_index("Country")
-        .astype(np.float64)
-    )
-
-    percent_futur_str = table_SI_2.loc[
-        (table_SI_2.LIA == "Out") & (table_SI_2.zone == "Deglaciated"),
-        ["Country"] + list(lcmap_veget.df.Type),
-    ].set_index("Country")
-
-    def remove_percent(x):
-        return np.float64(x[:-1])
-
-    percent_futur = percent_futur_str.map(remove_percent)
-    surf_future = percent_futur.div(100).mul(surf_deglaciated.values, axis=1)
-
-    # CO tons
-    table_co_future = get_CO(
-        surf_future,
-        cols=list(lcmap_veget.get_type()),
-        stocks=stocks,
-        factor=factor,
-    )
-
-    # CO percentage
-    table_co_future_perc = table_co_future.div(table_co_future["Total"], axis=0) * 100
-
-    # Modify percentage of total as the percentage of each country compared to ALPS
-    table_co_future_perc.loc[table_co_future_perc.index != "ALPS", "Total"] = (
-        table_co_future.loc[table_co_future.index != "ALPS", "Total"]
-        / table_co_future.loc[table_co_future.index == "ALPS", "Total"].values
-        * 100
-    )
-
-    # Define future index of the final table
-    table_co_future["time"] = "future"
-    table_co_future_perc["time"] = "future"
-
-    table_co_future["unit"] = "xxtC"
-    table_co_future_perc["unit"] = "%"
+    # # Get future surface for each vegetation type
+    # surf_deglaciated = (
+    #     table_SI_1.loc[table_SI_1.zone == "[km²]", ["Country", "deglaciated"]]
+    #     .set_index("Country")
+    #     .astype(np.float64)
+    # )
+    #
+    # percent_futur_str = table_SI_2.loc[
+    #     (table_SI_2.LIA == "Out") & (table_SI_2.zone == "Deglaciated"),
+    #     ["Country"] + list(lcmap_veget.df.Type),
+    # ].set_index("Country")
+    #
+    # def remove_percent(x):
+    #     return np.float64(x[:-1])
+    #
+    # percent_futur = percent_futur_str.map(remove_percent)
+    # surf_future = percent_futur.div(100).mul(surf_deglaciated.values, axis=1)
+    #
+    # # CO tons
+    # table_co_future = get_CO(
+    #     surf_future,
+    #     cols=list(lcmap_veget.get_type()),
+    #     stocks=stocks,
+    #     factor=factor,
+    # )
+    #
+    # # CO percentage
+    # table_co_future_perc = table_co_future.div(table_co_future["Total"], axis=0) * 100
+    #
+    # # Modify percentage of total as the percentage of each country compared to ALPS
+    # table_co_future_perc.loc[table_co_future_perc.index != "ALPS", "Total"] = (
+    #     table_co_future.loc[table_co_future.index != "ALPS", "Total"]
+    #     / table_co_future.loc[table_co_future.index == "ALPS", "Total"].values
+    #     * 100
+    # )
+    #
+    # # Define future index of the final table
+    # table_co_future["time"] = "future"
+    # table_co_future_perc["time"] = "future"
+    #
+    # table_co_future["unit"] = "xxtC"
+    # table_co_future_perc["unit"] = "%"
 
     # Concatenation and formatting
     # ============================
     table_SI_4_co = (
-        pd.concat([table_co_today, table_co_future])
+        pd.concat([table_co_today])  # , table_co_future])
         .rename(index={"ALPS": "Z_ALPS"})
         .reset_index()
         .sort_values(["Country", "unit"])
@@ -632,7 +632,7 @@ def get_table_SI_4(table_SI_1, table_SI_2, lcmap_veget, stocks, factor):
     )
 
     table_SI_4_perc = (
-        pd.concat([table_co_today_perc, table_co_future_perc])
+        pd.concat([table_co_today_perc])  # , table_co_future_perc])
         .rename(index={"ALPS": "Z_ALPS"})
         .reset_index()
         .sort_values(["Country", "unit"])
@@ -652,7 +652,7 @@ def get_table_SI_4(table_SI_1, table_SI_2, lcmap_veget, stocks, factor):
     )
 
     # Append columns of alpine contribution of each country to the co stocks table
-    table_SI_co_str["Alpine contribution"] = (
+    table_SI_co_str["Total contribution"] = (
         table_SI_perc_str[["Total"]] + "%"
     ).replace({"%": ""})
 
@@ -683,7 +683,9 @@ def get_table_SI_fig3_pp(
 
     # Reindex + format
     pp_perc_format = (
-        pp_perc.reindex(["LIA", "GLACIER", "DEGLACIATED", "VEGET", "WATER"], level=1)
+        pp_perc.reindex(
+            ["LIA", "GLACIERIZED", "DEGLACIATED", "VEGET", "WATER"], level=1
+        )
         .replace({np.nan: -1})  # To force columns with only floats to convert to int
         .replace({0.1: "<1"})  # Annotations for 0.1 (less than 15)
         .map(lambda x: str(myformat(x)) + "%")  # Convert to int and str
@@ -729,8 +731,18 @@ def get_table_SI_fig3_ski(pp_ski, infra=None):
 
     # percentage
     df_perc = df_length.div(df_length["LIA"], axis=0) * 100
-    df_perc["unit"] = "%"
+    df_perc["unit"] = "[%]"
     df_perc["LIA"] = ""
+    df_perc["GLACIER"] = (
+        df_perc["GLACIER"]
+        .map(lambda x: myformat(x))
+        .map(lambda x: f"{x:.0f}%" if np.isnan(x) != True else x)
+    )
+    df_perc["DEICED"] = (
+        df_perc["DEICED"]
+        .map(lambda x: myformat(x))
+        .map(lambda x: f"{x:.0f}%" if np.isnan(x) != True else x)
+    )
 
     df_length["unit"] = "[km]"  # here otherwise cannot divide str
 
@@ -739,7 +751,9 @@ def get_table_SI_fig3_ski(pp_ski, infra=None):
         pd.concat([df_length, df_perc])
         .set_index(["unit"], append=True)
         .sort_index(level=[1, 2], ascending=[True, False])
-        .rename(columns={"DEICED": "DEGLACIATED"})
+        .rename(
+            columns={"DEICED": "DEGLACIATED", "GLACIER": "GLACIERIZED"},
+        )
         .replace({np.nan: -1})  # To force columns with only floats to convert to int
         .map(lambda x: myformat(x))  # Convert to int and str
         .replace({0: "<1"})  # Annotations for 0.1 (less than 15)
@@ -782,11 +796,11 @@ def get_table_SI_fig3_dams(
     return df_format
 
 
-def get_table_SI_fig3_appendix(df, lcmap):
+def get_table_SI_fig3_ski_pp_lc(df, lcmap: LandCoverMap):
     def rename_lc_cols(cols):
         mydict = {}
         for col in cols:
-            mydict[col] = lcmap.get_type_of_code(int(col[-1]))
+            mydict[col] = lcmap.get_type_of_code(int(col))
         return mydict
 
     def myformat(val):
@@ -801,14 +815,35 @@ def get_table_SI_fig3_appendix(df, lcmap):
         except ValueError:
             return val
 
+    # Create VEGETATED columm
+    df_processed = df.copy()
+
+    col_veget = [
+        lcmap.get_code_of_type(ty)
+        for ty in ["grass", "shrubs", "forest", "sparse veget."]
+    ]
+    df_processed["Vegetation"] = df_processed[col_veget].sum(axis=1)
+
+    # Create percentage column
+    df_processed["perc"] = (
+        df_processed["Total"].div(
+            df_processed.groupby(["type", "Country"])
+            .sum()["Total"]
+            .reindex_like(df_processed)
+        )
+        * 100
+    )
+
+    # Final format
     df_format = (
-        df.rename(
+        df_processed.drop(columns=col_veget)
+        .rename(
             columns={
                 **{
                     "Total": "Total length [km²]",
-                    "perc": "Part of total infrastructure [%]",
+                    "perc": "Part of country's infras. [%]",
                 },
-                **rename_lc_cols(df.columns[:-2]),
+                **rename_lc_cols(df_processed.columns[:-3]),
             },
             index={
                 "type": "infrastructure",
@@ -819,9 +854,20 @@ def get_table_SI_fig3_appendix(df, lcmap):
         )
         .map(lambda x: myformat(x))
         .replace({np.nan: ""})
+        .rename(columns={"rocks & sediments": "Bare land", "snow & ice": "Glacierized"})
     )
 
-    df_format["Part of total infrastructure [%]"] += "%"
+    df_format["Part of country's infras. [%]"] += "%"
+    df_format = df_format[
+        [
+            df_format.columns[1],
+            df_format.columns[0],
+            df_format.columns[4],
+            df_format.columns[2],
+            df_format.columns[3],
+            df_format.columns[5],
+        ]
+    ]
 
     return df_format
 
@@ -2188,7 +2234,7 @@ def plot_fig_1_donuts_simplified(
     lw_glacier = 1.4
     fontsize_km = 14
     fontsize_bar = 12
-    fontsize_perc = 9
+    fontsize_perc = 12
 
     # ==================
     #     FUNCTIONS
@@ -2327,7 +2373,7 @@ def plot_fig_1_donuts_simplified(
             radius=max_radius,
             colors=outer_colors,
             autopct=lambda per: "{:.0f}%".format(per),
-            pctdistance=0.2,
+            pctdistance=0.6,
             labels=[f"{surf:.0f}" for surf in df_lia_area],
             labeldistance=0.5,
             wedgeprops=dict(edgecolor="k", linewidth=lw_inner_pie),
@@ -2360,10 +2406,14 @@ def plot_fig_1_donuts_simplified(
         perc_lbl[0].update({"text": ""})  # remove perc of deglaciated
 
         # Inner Glacier DE and SI
+        if area == "ALPS":
+            update_lbl_pct(wedges[1], perc_lbl[1], delta_ang=0, delta_dist=-0.1, rot=0)
+        if area == "CH":
+            update_lbl_pct(wedges[1], perc_lbl[1], delta_ang=-2, delta_dist=0.1, rot=0)
         if area == "DE":
-            update_lbl_pct(wedges[1], perc_lbl[1], delta_ang=0, delta_dist=0.2, rot=0)
+            update_lbl_pct(wedges[1], perc_lbl[1], delta_ang=-2, delta_dist=0.05, rot=0)
         if area == "SI":
-            update_lbl_pct(wedges[1], perc_lbl[1], delta_ang=0, delta_dist=0.1, rot=0)
+            update_lbl_pct(wedges[1], perc_lbl[1], delta_ang=0, delta_dist=-0.1, rot=0)
 
         # Update deglaciated surf for all
         surf_lbl[0].update({"horizontalalignment": "center", "color": "white"})
