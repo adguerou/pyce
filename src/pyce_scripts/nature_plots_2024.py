@@ -2214,24 +2214,23 @@ def plot_fig_1_donuts_simplified(
     # ==================
     # general parameters
     # ==================
-    # First donuts
-    ax_size = 1
-    pie_size = 0.6
-
-    # Second donuts
-    pie_size_ext = 0.9
-    wedge_size_ext = 0.25
+    # Figure size
+    ax_size = 1.1
 
     # Sizing of the inner pie
+    pie_size = 0.48
     max_radius = pie_size
     min_radius = 0.15  # define the minimum size of inner pie
     max_surf = df_lia.loc[df_lia.index == row_total_alps].sum(axis=1).values[0]
     min_surf = 1  # 1 km2 is SL
 
+    # Second donuts
+    pie_size_ext = 0.7
+    wedge_size_ext = 0.18
+
     # Layout parameters
     lw_inner_pie = 1
-    lw_outter_pie = 1.5
-    lw_glacier = 1.4
+    lw_outter_pie = 1.2
     fontsize_km = 14
     fontsize_bar = 12
     fontsize_perc = 12
@@ -2352,46 +2351,30 @@ def plot_fig_1_donuts_simplified(
         surf_area = df_lia_area.sum()
         inner_radius = get_inner_radius(surf_area)
 
-        # Plot inner circle with changing size + pie
-        # ------------------------------------------
-        circle = plt.Circle(
-            (0, 0), inner_radius, facecolor="None", edgecolor="k", linewidth=lw_glacier
-        )
-        ax.add_patch(circle)
+        if area == "SI":
+            inner_radius /= 2  # reduce the true size as it appears visually larger
 
         #          PIE
         # ========================
         # Colors
         outer_colors = [
             lcmap.get_color_of_code(code=9),  # deglaciated
-            "#ffffff00",  # glacier
+            lcmap.get_color_of_code(code=4),  # glacier
         ]
 
         # Plot pie
         wedges, surf_lbl, perc_lbl = ax.pie(
             df_lia_area,
-            radius=max_radius,
+            radius=inner_radius,
             colors=outer_colors,
             autopct=lambda per: "{:.0f}%".format(per),
             pctdistance=0.6,
             labels=[f"{surf:.0f}" for surf in df_lia_area],
-            labeldistance=0.5,
+            labeldistance=0.4,
             wedgeprops=dict(edgecolor="k", linewidth=lw_inner_pie),
             counterclock=False,
             startangle=0,
         )
-
-        # Add circle on top of deglaciated for SI as it takes 100%
-        if area == "SI":
-            circle = plt.Circle(
-                (0, 0),
-                inner_radius / 2,  # reduce the true size as it appears visually larger
-                facecolor="None",
-                edgecolor="k",
-                linewidth=lw_glacier,
-                ls="--",
-            )
-            ax.add_patch(circle)
 
         # Set fontsize
         # ------------
@@ -2405,30 +2388,35 @@ def plot_fig_1_donuts_simplified(
         wedges[1].update({"edgecolor": "#ffffff00"})  # put glacier transparent
         perc_lbl[0].update({"text": ""})  # remove perc of deglaciated
 
-        # Inner Glacier DE and SI
+        # Inner Glacier percentage
         if area == "ALPS":
-            update_lbl_pct(wedges[1], perc_lbl[1], delta_ang=0, delta_dist=-0.1, rot=0)
+            update_lbl_pct(wedges[1], perc_lbl[1], delta_ang=0, delta_dist=-0.05, rot=0)
+        if area == "AT" or area == "FR" or area == "IT":
+            update_lbl_pct(wedges[1], perc_lbl[1], delta_ang=-10, delta_dist=0.2, rot=0)
         if area == "CH":
-            update_lbl_pct(wedges[1], perc_lbl[1], delta_ang=-2, delta_dist=0.1, rot=0)
+            update_lbl_pct(wedges[1], perc_lbl[1], delta_ang=-5, delta_dist=0.2, rot=0)
         if area == "DE":
-            update_lbl_pct(wedges[1], perc_lbl[1], delta_ang=-2, delta_dist=0.05, rot=0)
+            update_lbl_pct(wedges[1], perc_lbl[1], delta_ang=-5, delta_dist=0.2, rot=0)
         if area == "SI":
-            update_lbl_pct(wedges[1], perc_lbl[1], delta_ang=0, delta_dist=-0.1, rot=0)
+            update_lbl_pct(wedges[1], perc_lbl[1], delta_ang=5, delta_dist=0.18, rot=0)
 
         # Update deglaciated surf for all
-        surf_lbl[0].update({"horizontalalignment": "center", "color": "white"})
-        ax.text(
-            surf_lbl[0].get_position()[0],
-            surf_lbl[0].get_position()[1] - 0.1,
-            "km²",
-            va="top",
-            ha="center",
-            fontsize=10,
-            color="white",
-        )
+        surf_lbl[0].update({"horizontalalignment": "center", "color": "k"})
+        if area == "ALPS":
+            ax.text(
+                surf_lbl[0].get_position()[0],
+                surf_lbl[0].get_position()[1] - 0.1,
+                "km²",
+                va="top",
+                ha="center",
+                fontsize=fontsize_km - 2,
+                color="k",
+            )
+        if area == "SI":
+            update_lbl_pct(wedges[0], surf_lbl[0], delta_ang=0, delta_dist=0.18, rot=0)
 
         # Country
-        ax.text(-pie_size_ext, pie_size_ext, area, fontsize=16, weight="bold")
+        # ax.text(-pie_size_ext, pie_size_ext, area, fontsize=16, weight="bold")
 
         # ============================================================================
         #                          Deglaciated plot
@@ -2455,7 +2443,7 @@ def plot_fig_1_donuts_simplified(
             radius=pie_size_ext,
             colors=outer_colors,
             labels=[f"{surf:.0f}" for surf in outer_vals],
-            labeldistance=1.1,
+            labeldistance=1.15,
             wedgeprops=dict(
                 width=wedge_size_ext, edgecolor="k", linewidth=lw_outter_pie
             ),
@@ -2672,7 +2660,7 @@ def plot_fig_1_donuts_simplified(
             ax_bar.text(
                 bar_angle_span / 2.0,
                 pie_size_ext + 0.28,
-                "No vegetation\nNo water",
+                "Bare land\nonly",
                 style="italic",
                 fontsize=11,
                 ha="right",
@@ -2694,23 +2682,23 @@ def plot_fig_1_donuts_simplified_legend(
 ):
     # general parameters
     # ==================
-    # First donuts
-    ax_size = 1
-    pie_size = 0.6
-
-    # Second donuts
-    pie_size_ext = 0.9
-    wedge_size_ext = 0.25
+    # Figure size
+    ax_size = 1.1
 
     # Sizing of the inner pie
+    pie_size = 0.48
     max_radius = pie_size
     min_radius = 0.15  # define the minimum size of inner pie
     max_surf = df_lia.loc[df_lia.index == row_total_alps].sum(axis=1).values[0]
     min_surf = 1  # 1 km2 is SL
 
+    # Second donuts
+    pie_size_ext = 0.7
+    wedge_size_ext = 0.18
+
     # Layout parameters
     lw_pie = 1
-    lw_glacier = 1.0
+    lw_glacier = 0.8
 
     # ======
     # Figure
@@ -2761,9 +2749,25 @@ def plot_fig_1_donuts_simplified_legend(
 
     # Plot inner circle with changing size + pie
     # ------------------------------------------
-    surf_area = [1, 500, 900, 2000, df_lia_area.sum()]
+    # Circle of changing size
+    surf_area = [1, 300, 1000, df_lia_area.sum()]
     circ_size = [inner_radius(s) for s in surf_area]
     circ_size[0] /= 2
+
+    # Bckg pie with colors of deglaciated + glacier
+    outer_colors = [
+        lcmap.get_color_of_code(code=9),  # deglaciated
+        lcmap.get_color_of_code(code=4),  # glacier
+    ]
+    wedges = ax.pie(
+        df_lia_area,
+        radius=circ_size[-1],
+        colors=outer_colors,
+        labels=None,
+        wedgeprops=dict(edgecolor="None", linewidth=lw_pie),
+        counterclock=False,
+        startangle=0,
+    )
 
     for cs in circ_size:
         circle = plt.Circle(
@@ -2772,25 +2776,35 @@ def plot_fig_1_donuts_simplified_legend(
             facecolor="None",
             edgecolor="k",
             linewidth=lw_glacier,
+            ls="--",
         )
         ax.add_patch(circle)
 
-    # Colors
-    outer_colors = [
-        lcmap.get_color_of_code(code=9),  # deglaciated
-        "#ffffff00",  # glacier
-    ]
-
-    # Plot pie
-    wedges = ax.pie(
-        df_lia_area,
-        radius=max_radius,
-        colors=outer_colors,
-        labels=None,
-        wedgeprops=dict(edgecolor="k", linewidth=lw_pie),
-        counterclock=False,
-        startangle=0,
-    )
+    # ==================================================================
+    #   Annotation for donuts size
+    # ==================================================================
+    for cs, surf, shift in zip(circ_size, surf_area, [-0.05, -0.03, 0.05, 0.01]):
+        ax.annotate(
+            "",
+            # The donut circle / arrow
+            xy=(0, cs),
+            # The text no arrow
+            xytext=(pie_size_ext, cs),
+            arrowprops=dict(
+                arrowstyle="-",
+                ls="-",
+                lw=0.8,
+                color="k",
+            ),
+        )
+        ax.text(
+            pie_size_ext + 0.05,
+            cs + shift,
+            f"{surf:.0f}",
+            fontsize=12,
+            ha="left",
+            va="center",
+        )
 
     # ============================================================================
     #                          Deglaciated plot
@@ -2800,7 +2814,7 @@ def plot_fig_1_donuts_simplified_legend(
         lcmap.get_color_of_code(code=8),  # vegetation
         lcmap.get_color_of_code(code=0),  # rocks
         lcmap.get_color_of_code(code=5),  # aquatic
-        lcmap.get_color_of_code(code=4),  # snow / transparent
+        "#ffffff00",  # snow / transparent
     ]
 
     # Modify outer_vals for small values of water
@@ -3972,8 +3986,6 @@ def plot_fig_3_pp(
     df_perc,
     lcmap: LandCoverMap,
     colors: dict = None,
-    xlabels=["IUCN+", "IUCN", "WH", "RAMSAR"],
-    ylabels=["", "Glacier", "Deglaciated", "Veget", "Water"],
     vmin=0.1,  # vmin à 0.1 / comme cela les valeurs à zeros (pas la protection) sont de la couleur set_under
     # 0.1 et pas 1 pour quand le max de pp_perc =1, il y ai qd meme un range de couleur entre vmin/vmax, sinon heatmap fonctionne pas bien
     # et 0.1 pour que ce soit == aux valeurs processés pour qd il y a moins de 1% dans la catégorie (0 dans le excel / mis à 0.1 pr faire la diff avec les zeros de pas de protection)
@@ -4230,6 +4242,181 @@ def plot_fig_3_pp(
         for ax in axes:
             ax.set(xlabel="", ylabel="")
             ax.tick_params(left=False, top=False)
+
+        if save_name is not None:
+            plt.savefig(os.path.join(save_dir, save_name + f"_{country}.png"), dpi=300)
+
+
+def plot_fig_3_pp_simplified(
+    df_perc,
+    lcmap: LandCoverMap,
+    colors: dict = None,
+    vmin=0.1,  # vmin à 0.1 / comme cela les valeurs à zeros (pas la protection) sont de la couleur set_under
+    # 0.1 et pas 1 pour quand le max de pp_perc =1, il y ai qd meme un range de couleur entre vmin/vmax, sinon heatmap fonctionne pas bien
+    # et 0.1 pour que ce soit == aux valeurs processés pour qd il y a moins de 1% dans la catégorie (0 dans le excel / mis à 0.1 pr faire la diff avec les zeros de pas de protection)
+    save_dir: str = None,
+    save_name: str = None,
+):
+    # Function for colormaps
+    # ======================
+    if colors is None:
+        colors = {
+            "strong": "#8dd3c7",
+            "weak": "#ffffb3",
+            "wh": "#bebada",
+            "none": "#fb8072",
+        }
+
+    def get_cmap(color):
+        cmap = LinearSegmentedColormap.from_list(
+            name="mycmap", colors=[color, color], N=256
+        )
+        cmap.set_under(color)  # couleur sous vmin / pas la protection
+        return cmap
+
+    # Format df to annotate heatmaps
+    def myformat(val):
+        try:
+            float(val)
+            if np.isnan(val):
+                return val
+            else:
+                return int(val)
+        except ValueError:
+            return val
+
+    # Annotations
+    df_annot = (
+        df_perc.replace(
+            {np.nan: -1}
+        )  # To force columns with only floats to convert to int
+        .replace({0.1: "<1"})  # Annotations for 0.1 (less than 15)
+        .map(lambda x: myformat(x))  # Convert to int and str
+        .replace(
+            {-1: ""}
+        )  # Convert back -1 to empty string (rather than NaN otherwise broadcast to float)
+    )
+
+    # ==========================================
+    #            PLOT per country
+    # ==========================================
+    for country in list(set(df_perc.index.get_level_values(0))):
+        # Get data
+        df = df_perc.loc[df_perc.index.get_level_values(0) == country]
+
+        # PLOT
+        fig, ax = plt.subplots(
+            1,
+            1,
+            figsize=(2, 0.5),
+            gridspec_kw={
+                "hspace": 0,
+                "wspace": 0,
+                "left": 0,
+                "right": 1,
+                "bottom": 0,
+                "top": 1,
+            },
+        )
+
+        fontsize = 16
+        # Total - first line
+        # ------------------
+        # Strong
+        df_plot = df[df.index.get_level_values(1) == "LIA"]
+        annot = df_annot.loc[df_plot.index]  # .map(lambda x: f"{x}%")
+
+        sbn.heatmap(
+            df_plot,
+            annot=annot,
+            fmt="",
+            annot_kws={"weight": "bold", "fontsize": fontsize},
+            cmap=get_cmap(colors["strong"]),
+            cbar=False,
+            vmin=vmin,
+            vmax=5,
+            linewidths=1,
+            linecolor="k",
+            xticklabels=False,
+            yticklabels=False,
+            square=True,
+            ax=ax,
+        )
+
+        # Weak
+        df_plot.loc[:, "IUCN_strong"] = np.nan
+        annot.loc[:, "IUCN_strong"] = np.nan
+
+        sbn.heatmap(
+            df_plot,
+            annot=annot,
+            fmt="",
+            annot_kws={"weight": "bold", "fontsize": fontsize},
+            cmap=get_cmap(colors["weak"]),
+            cbar=False,
+            vmin=vmin,
+            vmax=5,
+            linewidths=1,
+            linecolor="k",
+            xticklabels=False,
+            yticklabels=False,
+            square=True,
+            ax=ax,
+        )
+
+        # WH
+        df_plot.loc[:, "IUCN_weak"] = np.nan
+        annot.loc[:, "IUCN_weak"] = np.nan
+
+        sbn.heatmap(
+            df_plot,
+            annot=annot,
+            fmt="",
+            annot_kws={"weight": "bold", "fontsize": fontsize},
+            cmap=get_cmap(colors["wh"]),
+            cbar=False,
+            vmin=vmin,
+            vmax=5,
+            linewidths=1,
+            linecolor="k",
+            xticklabels=False,
+            yticklabels=False,
+            square=True,
+            ax=ax,
+        )
+
+        # None
+        df_plot.loc[:, "WH"] = np.nan
+        annot.loc[:, "WH"] = np.nan
+
+        # In case one want to add label inside plots
+        if country == "ALPS":
+            xlabel = False
+            ylabel = False
+        else:
+            xlabel = False
+            ylabel = False
+
+        sbn.heatmap(
+            df_plot,
+            annot=annot,
+            fmt="",
+            annot_kws={"weight": "bold", "fontsize": fontsize},
+            cmap=get_cmap(colors["none"]),
+            cbar=False,
+            vmin=vmin,
+            vmax=5,
+            linewidths=1,
+            linecolor="k",
+            xticklabels=xlabel,
+            yticklabels=False,
+            square=True,
+            ax=ax,
+        )
+
+        # Settings
+        ax.set(xlabel="", ylabel="")
+        ax.tick_params(left=False, top=False)
 
         if save_name is not None:
             plt.savefig(os.path.join(save_dir, save_name + f"_{country}.png"), dpi=300)
