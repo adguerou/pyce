@@ -105,7 +105,8 @@ colors_h1b_paper = [
     "#1f78b4",  # eau
     "#fff2ae",  # sols peu végétalisés
     "#33a02c",  # vegetation
-    "#996c49",  # deglaciated
+    "#ede9e4",  # deglaciated
+    # "#996c49",  # deglaciated
 ]
 
 colors_tp_lc10 = [
