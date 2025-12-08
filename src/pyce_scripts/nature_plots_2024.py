@@ -684,7 +684,7 @@ def get_table_SI_fig3_pp(
     # Reindex + format
     pp_perc_format = (
         pp_perc.reindex(
-            ["LIA", "GLACIERIZED", "DEGLACIATED", "VEGET", "WATER"], level=1
+            ["LIA", "GLACIERIZED", "DEGLACIATED", "VEGETATED", "WATER"], level=1
         )
         .replace({np.nan: -1})  # To force columns with only floats to convert to int
         .replace({0.1: "<1"})  # Annotations for 0.1 (less than 15)
@@ -840,24 +840,38 @@ def get_table_SI_fig3_ski_pp_lc(df, lcmap: LandCoverMap):
         .rename(
             columns={
                 **{
-                    "Total": "Total length [km²]",
-                    "perc": "Part of country's infras. [%]",
+                    "Total": "Total length [km]",
+                    "perc": "Part of LIA country's infras. [%]",
                 },
                 **rename_lc_cols(df_processed.columns[:-3]),
             },
             index={
                 "type": "infrastructure",
-                "IUCN_strong": "IUCN+",
-                "IUCN_weak": "IUCN",
+                "run": "Groomed ski runs",
+                "lift": "Ski lifts",
+                "IUCN_strong": "IUCN (cat I-II)",
+                "IUCN_weak": "IUCN (cat III-IV)",
                 "WH": "UNESCO",
+                "Not protected": "No protection",
             },
         )
+        .rename(columns={"rocks & sediments": "Bare land", "snow & ice": "Glacierized"})
         .map(lambda x: myformat(x))
         .replace({np.nan: ""})
-        .rename(columns={"rocks & sediments": "Bare land", "snow & ice": "Glacierized"})
+        .reindex(
+            [
+                "IUCN (cat I-II)",
+                "IUCN (cat III-IV)",
+                "UNESCO",
+                "RAMSAR",
+                "Other",
+                "No protection",
+            ],
+            level=2,
+        )
     )
 
-    df_format["Part of country's infras. [%]"] += "%"
+    df_format["Part of LIA country's infras. [%]"] += "%"
     df_format = df_format[
         [
             df_format.columns[1],
