@@ -442,14 +442,14 @@ def get_table_SI_2(df_lia, df_buffer, lcmap_lia, lcmap_buffer, round_dec=1):
 
 
 def get_table_SI_2_uncert(
-    df_lia, df_buffer, lcmap_lia, lcmap_buffer, surface_to_divide_by, round_dec=1
+    df_lia, df_buffer, lcmap_lia, lcmap_buffer, surface_lia, surface_buffer, round_dec=1
 ):
     # Get percentage of buffer through TABLE SI 1
     # ===========================================
     table_buffer = get_table_SI_1(
         df_buffer,
         lcmap_buffer,
-        surface_to_divide_by=surface_to_divide_by,
+        surface_to_divide_by=surface_buffer,
         lcmap_glacier_name=None,
         lcmap_water_name=None,
         round_dec=round_dec,
@@ -476,7 +476,7 @@ def get_table_SI_2_uncert(
     table_lia = get_table_SI_1(
         df_lia,
         lcmap_lia,
-        surface_to_divide_by=surface_to_divide_by,
+        surface_to_divide_by=surface_lia,
         lcmap_glacier_name=None,
         lcmap_water_name=None,
         round_dec=round_dec,
