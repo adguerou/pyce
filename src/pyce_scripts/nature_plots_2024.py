@@ -518,7 +518,7 @@ def get_table_SI_2_uncert(
     return table_SI_2
 
 
-def get_table_SI_4(table_SI_1, table_SI_2, lcmap_veget, stocks, factor):
+def get_table_SI_4(table_SI_1, lcmap_veget, stocks, factor):
     # Functions to get CO tons from stocks and surface
     def get_CO(df, cols, stocks, factor):
         df_CO = pd.DataFrame(index=df.index)
@@ -561,111 +561,55 @@ def get_table_SI_4(table_SI_1, table_SI_2, lcmap_veget, stocks, factor):
     )  # Modify percentage of total as the percentage of each country compared to ALPS
 
     # Define future index of the final table
-    table_co_today["time"] = "2015"
-    table_co_today_perc["time"] = "2015"
-
     table_co_today["unit"] = "xxtC"
     table_co_today_perc["unit"] = "%"
-
-    # Future estimation
-    # =================
-    # # Get future surface for each vegetation type
-    # surf_deglaciated = (
-    #     table_SI_1.loc[table_SI_1.zone == "[km²]", ["Country", "deglaciated"]]
-    #     .set_index("Country")
-    #     .astype(np.float64)
-    # )
-    #
-    # percent_futur_str = table_SI_2.loc[
-    #     (table_SI_2.LIA == "Out") & (table_SI_2.zone == "Deglaciated"),
-    #     ["Country"] + list(lcmap_veget.df.Type),
-    # ].set_index("Country")
-    #
-    # def remove_percent(x):
-    #     return np.float64(x[:-1])
-    #
-    # percent_futur = percent_futur_str.map(remove_percent)
-    # surf_future = percent_futur.div(100).mul(surf_deglaciated.values, axis=1)
-    #
-    # # CO tons
-    # table_co_future = get_CO(
-    #     surf_future,
-    #     cols=list(lcmap_veget.get_type()),
-    #     stocks=stocks,
-    #     factor=factor,
-    # )
-    #
-    # # CO percentage
-    # table_co_future_perc = table_co_future.div(table_co_future["Total"], axis=0) * 100
-    #
-    # # Modify percentage of total as the percentage of each country compared to ALPS
-    # table_co_future_perc.loc[table_co_future_perc.index != "ALPS", "Total"] = (
-    #     table_co_future.loc[table_co_future.index != "ALPS", "Total"]
-    #     / table_co_future.loc[table_co_future.index == "ALPS", "Total"].values
-    #     * 100
-    # )
-    #
-    # # Define future index of the final table
-    # table_co_future["time"] = "future"
-    # table_co_future_perc["time"] = "future"
-    #
-    # table_co_future["unit"] = "xxtC"
-    # table_co_future_perc["unit"] = "%"
 
     # Concatenation and formatting
     # ============================
     table_SI_4_co = (
-        pd.concat([table_co_today])  # , table_co_future])
+        pd.concat([table_co_today])
         .rename(index={"ALPS": "Z_ALPS"})
         .reset_index()
         .sort_values(["Country", "unit"])
-        .set_index(["Country", "unit", "time"])
+        .set_index(["Country", "unit"])
         .reindex(["xxtC", "%"], level=1)
         .rename(index={"Z_ALPS": "ALPS"})
         .round(1)
+        .droplevel(1)
     )
-    table_SI_co_str = (
+    table_SI_4_co_str = (
         table_SI_4_co.map(f"{{:.0f}}".format)
         .replace({"nan": ""})
         .astype(str)
-        .droplevel(1)
+        .replace({"0": "<1"})
     )
 
     table_SI_4_perc = (
-        pd.concat([table_co_today_perc])  # , table_co_future_perc])
+        pd.concat([table_co_today_perc])
         .rename(index={"ALPS": "Z_ALPS"})
         .reset_index()
         .sort_values(["Country", "unit"])
-        .set_index(["Country", "unit", "time"])
+        .set_index(["Country", "unit"])
         .reindex(["xxtC", "%"], level=1)
         .rename(index={"Z_ALPS": "ALPS"})
         .round(1)
         .replace({100: np.nan})
+        .droplevel(1)
     )
-    table_SI_perc_str = (
+    table_SI_4_perc_str = (
         table_SI_4_perc.map(f"{{:.0f}}".format)
         .replace({"nan": ""})
         .astype(str)
         .replace({"0": "<1"})
         .astype(str)
-        .droplevel(1)
     )
 
     # Append columns of alpine contribution of each country to the co stocks table
-    table_SI_co_str["Total contribution"] = (
-        table_SI_perc_str[["Total"]] + "%"
+    table_SI_4_co_str["Total contribution"] = (
+        table_SI_4_perc_str[["Total"]] + "%"
     ).replace({"%": ""})
 
-    # Final formatting
-    table_SI_4 = (
-        table_SI_co_str.reset_index(level=1)
-        .rename(columns={"time": "[ktC]"})
-        .replace({"2015": "2020", "future": "potential"})
-        .set_index(["[ktC]"], append=True)
-        .sort_index()
-    )
-
-    return table_SI_4, table_SI_4_co, table_SI_4_perc
+    return table_SI_4_co_str, table_SI_4_co
 
 
 def get_table_SI_fig3_pp(
