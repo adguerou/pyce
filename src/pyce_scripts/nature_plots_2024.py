@@ -3928,7 +3928,7 @@ def plot_fig_2b(
         title=None,
         frameon=False,
         fontsize=9,
-        labels=["Rocks & sediments", "Vegetation"],
+        labels=["Bare land", "Vegetation"],
     )
     g.set_axis_labels(dict_params["xlabel"], dict_params["ylabel"], fontsize=14)
     g.refline(x=0, y=30, marginal=False)
@@ -4471,15 +4471,19 @@ def plot_fig_SI_2(
         )
 
     # X/Y labels
-    g.ax_joint.set_xlabel(xlabel=xplot[:-2] + f"$_{xplot[-1:]}$", fontweight="bold")
-    g.ax_joint.set_ylabel(ylabel=yplot[:-2] + f"$_{xplot[-1:]}$", fontweight="bold")
+    g.ax_joint.set_xlabel(
+        xlabel=xplot[:-2] + f"$_{xplot[-1:]}$", fontweight="bold", fontsize=12
+    )
+    g.ax_joint.set_ylabel(
+        ylabel=yplot[:-2] + f"$_{xplot[-1:]}$", fontweight="bold", fontsize=12
+    )
 
     # Grid
     plt.grid(ls="--")
 
     # Saving
     if save_dir is not None and save_name is not None:
-        plt.savefig(os.path.join(save_dir, save_name) + ".png", dpi=200)
+        plt.savefig(os.path.join(save_dir, save_name) + ".png", dpi=300)
 
 
 def plot_fig_SI_5(
