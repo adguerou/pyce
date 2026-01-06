@@ -489,8 +489,8 @@ def plot_errorMatrix(errorMatrix, lcmap, label=None, save_dir=None, save_name=No
     cbar.set_ticks([0, 50, 100])
     cbar.set_label(f"[%] of prediction")
 
-    ax2.tick_params(axis="x", rotation=40)
-    ax2.tick_params(axis="y", rotation=20)
+    ax2.tick_params(axis="x", rotation=30)
+    ax2.tick_params(axis="y", rotation=30)
 
     f.tight_layout()
 
