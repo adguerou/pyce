@@ -335,8 +335,8 @@ def rf_circular(
     # UNCERTAINTIES
     # --------------
     # Function to select scores on df
-    def sel_scores(row):
-        return row["classification"][row["landcover"]]
+    def sel_scores(row, landcover=label_classif_col):
+        return row["classification"][row[landcover]]
 
     # Get the scores (the proba of the true class)
     df_scores = []
