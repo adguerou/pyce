@@ -109,6 +109,13 @@ colors_h1b_paper = [
     # "#996c49",  # deglaciated
 ]
 
+prioritice = [
+    "#d19b71",  # surfaces minerales
+    "#fff2ae",  # moss and lichens
+    "#7fc97f",  # grass
+    "#1b9e77",  # foret coniferes
+]
+
 colors_tp_lc10 = [
     "#d19b71",  # Bare land : 0
     "#f5ebe2",  # Alpine scree

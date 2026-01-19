@@ -73,6 +73,14 @@ h1b_paper = {
     _lcm_reindex: [3, 2, 1, 6, 0, 4, 5, 8, 9],
 }
 
+prioritice = {
+    _mapping_kwargs: {"col_type": 0, "col_code": 1, "header": None, "sep": ":"},
+    _lcm_colors: lc_colormaps.prioritice,
+    _lcm_codes_to_mask: None,
+    _lcm_mask_val: None,
+    _lcm_reindex: [0, 1, 2, 3],
+}
+
 s2glc = {
     _mapping_kwargs: {
         "col_type": 5,
@@ -106,6 +114,7 @@ dict_lc_maps = {
     "h1b": h1b,
     "h1b_paper": h1b_paper,
     "tp_lc10": tp_lc10,
+    "prioritice": prioritice,
 }
 
 
