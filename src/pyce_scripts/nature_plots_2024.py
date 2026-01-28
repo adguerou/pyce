@@ -1,5 +1,4 @@
 import os
-from operator import index
 from typing import Union
 
 import numpy as np
@@ -2341,7 +2340,7 @@ def plot_fig_1_donuts_simplified(
             pb.set_fontsize(fontsize_perc)
 
         # Label editing
-        # =============
+        # =============s
         surf_lbl[1].update({"text": ""})  # remove surf of glacier
         wedges[1].update({"edgecolor": "#ffffff00"})  # put glacier transparent
         perc_lbl[0].update({"text": ""})  # remove perc of deglaciated
@@ -3533,7 +3532,7 @@ def plot_fig_2a_vertical(
     ax_pie_out.text(
         0.5,
         1.1,
-        "Buffer\nzone",
+        "Adjacent\nzone",
         ha="center",
         fontsize=8,
         weight="bold",
@@ -3902,7 +3901,7 @@ def plot_fig_2b(
     h1.set_ylabel(dict_params["label_margins"], fontsize=10)
     h1.yaxis.set_tick_params(which="major", pad=25)
     h1.set_yticklabels(
-        labels=["Buffer\nzone", "LIA\ndegla."],
+        labels=["Adj.\nzone", "LIA\ndegla."],
         ha="center",
         fontsize=8,
         rotation=90,
@@ -3912,7 +3911,7 @@ def plot_fig_2b(
 
     h2.yaxis.set_label_position("right")
     h2.set_xlabel(dict_params["label_margins"], fontsize=10)
-    h2.set_xticklabels(labels=["LIA\ndegla.", "Buffer\nzone"], fontsize=8)
+    h2.set_xticklabels(labels=["LIA\ndegla.", "Adj.\nzone"], fontsize=8)
     sbn.despine(ax=h2, left=True, bottom=True, right=False)
     h2.tick_params(
         bottom=False, left=False, labelleft=False, right=True, labelright=True
