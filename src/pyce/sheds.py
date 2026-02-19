@@ -226,7 +226,7 @@ def get_lake_shape(
     # Transform to geodataframe + save if asked
     # ================================
     lake_shp_gdf = gpd.GeoDataFrame(
-        {"lake": [name_lake]}, geometry=[lake_shp], crs=crs_lake
+        {"lake_name": [name_lake]}, geometry=[lake_shp], crs=crs_lake
     )
     if save_name is not None:
         lake_shp_gdf.to_file(save_name)
@@ -465,11 +465,11 @@ def get_shed(
     # ==========
     gdf_shed = gpd.GeoDataFrame(
         {
-            "lake": [name_shed],
-            "X outlet": [xy_outlet[0]],
-            "Y outlet": [xy_outlet[1]],
-            "X snap": x_snap,
-            "Y snap": y_snap,
+            "lake_name": [name_shed],
+            "x_outlet": [xy_outlet[0]],
+            "y_outlet": [xy_outlet[1]],
+            "x_snap": x_snap,
+            "y_snap": y_snap,
         },
         geometry=[catch_geom_sel],
         crs=crs_dem,
