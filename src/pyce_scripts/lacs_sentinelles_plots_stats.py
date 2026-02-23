@@ -44,13 +44,13 @@ def get_stats_surface(
         # Get sheds and lake data
         shed_shp = gpd.read_file(
             os.path.join(
-                data_dir,
+                save_dir,
                 f"lake_by_lake/{lake}/lacsSentinelles_{metadata['shed_ext']}_{lake}.shp",
             )
         )
         lake_shp = gpd.read_file(
             os.path.join(
-                data_dir,
+                save_dir,
                 f"lake_by_lake/{lake}/lacsSentinelles_{metadata['lake_ext']}_{lake}.shp",
             )
         )
@@ -61,13 +61,11 @@ def get_stats_surface(
         ratio_shed = shed_area / lake_area
 
         # Get altitude lake/ max/ median
-        mnt_lake = rioxr.open_rasterio(
-            os.path.join(data_dir, f"../dem/dem_1m/{lake}.tif")
-        )
+        mnt_lake = rioxr.open_rasterio(os.path.join(data_dir, f"dem/dem_1m/{lake}.tif"))
 
         coords = pd.read_csv(
             os.path.join(
-                data_dir,
+                save_dir,
                 f"ancillary/lacsSentinelles_{metadata['coords_ext']}.csv",
             )
         )
@@ -89,7 +87,7 @@ def get_stats_surface(
         # ==================
         lc_shp = gpd.read_file(
             os.path.join(
-                data_dir,
+                save_dir,
                 f"lake_by_lake/{lake}/lacsSentinelles_{metadata['landcover_ext']}_{lake}.shp",
             )
         )
