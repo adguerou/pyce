@@ -9,10 +9,13 @@ import pandas as pd
 import seaborn as sbn
 from matplotlib import pyplot as plt
 
-
 # =====================================================================================
 # Functions to compute spectral indices of satellites data based on Google Earth Engine
 # =====================================================================================
+
+
+# SENTINEL-2
+# ----------
 def add_s2_gbr(image):
     NIR = image.select("B8")
     SWIR1 = image.select("B11")
@@ -46,6 +49,192 @@ def add_s2_cvi(image):
     nir = image.select("B8")
 
     return image.addBands(nir * red / green**2)
+
+
+# LANDSAT
+# -------
+def rename_bands(
+    imageCollection: ee.ImageCollection,
+    input_bands: list,
+    output_bands: list,
+):
+    return imageCollection.select(input_bands, output_bands)
+
+
+def rename_bands_LT457(imageCollection: ee.ImageCollection, invert=False):
+    input_bands = [
+        "SR_B1",
+        "SR_B2",
+        "SR_B3",
+        "SR_B4",
+        "SR_B5",
+        "SR_B7",
+        "ST_B6",
+        "QA_PIXEL",
+    ]
+    output_bands = [
+        "BLUE",
+        "GREEN",
+        "RED",
+        "NIR",
+        "SWIR1",
+        "SWIR2",
+        "THERMAL1",
+        "QA_PIXEL",
+    ]
+    if invert is True:
+        return rename_bands(imageCollection, output_bands, input_bands)
+    else:
+        return rename_bands(imageCollection, input_bands, output_bands)
+
+
+def rename_bands_LT457_invert(imageCollection: ee.ImageCollection):
+    return rename_bands_LT457(imageCollection, invert=True)
+
+
+def rename_bands_LC8(imageCollection: ee.ImageCollection, invert=False):
+    input_bands = [
+        "SR_B1",
+        "SR_B2",
+        "SR_B3",
+        "SR_B4",
+        "SR_B5",
+        "SR_B6",
+        "SR_B7",
+        "ST_B10",
+        "QA_PIXEL",
+    ]
+    output_bands = [
+        "AEROSOLS",
+        "BLUE",
+        "GREEN",
+        "RED",
+        "NIR",
+        "SWIR1",
+        "SWIR2",
+        "THERMAL1",
+        "QA_PIXEL",
+    ]
+    if invert:
+        return rename_bands(imageCollection, output_bands, input_bands)
+    else:
+        return rename_bands(imageCollection, input_bands, output_bands)
+
+
+def rename_bands_LC8_invert(imageCollection: ee.ImageCollection):
+    return rename_bands_LC8(imageCollection, invert=True)
+
+
+def add_landsat457_gbr(image: ee.Image):
+    NIR = image.select("SR_B4")
+    SWIR1 = image.select("SR_B5")
+    return image.addBands((NIR / SWIR1).rename("GBR"))
+
+
+def add_landsat8_gbr(image: ee.Image):
+    NIR = image.select("SR_B5")
+    SWIR1 = image.select("SR)B6")
+    return image.addBands((NIR / SWIR1).rename("GBR"))
+
+
+def get_landsat_cal(factors, bandName, factorNumber):
+    return ee.List(factors.get(bandName)).getNumber(factorNumber)
+
+
+def apply_landsat_cal(image: ee.Image, factors, bandName):
+    return (
+        ee.Image(get_landsat_cal(factors, bandName, 0))
+        .add(image.select(bandName).multiply(get_landsat_cal(factors, bandName, 1)))
+        .add(
+            image.select(bandName)
+            .pow(2)
+            .multiply(get_landsat_cal(factors, bandName, 2))
+        )
+        .add(
+            image.select(bandName)
+            .pow(3)
+            .multiply(get_landsat_cal(factors, bandName, 3))
+        )
+        .rename(bandName)
+    )
+
+
+def apply_crosscal_LT5(image: ee.Image, region: str = "temp"):
+    # Source: https://www.nature.com/articles/s41558-024-02177-x#Sec14
+
+    # Temperate mountains
+    factors_temp = ee.Dictionary(
+        {
+            "RED": [-0.0042, 1.0049, 0.0000, 0.0000],
+            "NIR": [0.0070, 0.8904, 0.4760, -0.5883],
+            "GREEN": [0.0008, 0.8998, 0.2289, 0.0000],
+            "SWIR1": [-0.0027, 1.0503, -0.4189, 0.5941],
+        }
+    )
+    # Arctic
+    factors_arct = ee.Dictionary(
+        {
+            "RED": [-0.0068, 1.0075, 0.0000, 0.0000],
+            "GREEN": [-0.0011, 0.8733, 0.3266, 0.0000],
+            "NIR": [0.0057, 0.9686, 0.0000, 0.0000],
+            "SWIR1": [0.0010, 0.9791, 0.0000, 0.0000],
+        }
+    )
+
+    # Region selection
+    factors_dict = {"temp": factors_temp, "arctic": factors_arct}
+    if region not in ["temp", "arctic"]:
+        raise IOError("Region must be within ['temp', 'arctic']")
+    else:
+        factors = factors_dict[region]
+
+    cal = (
+        apply_landsat_cal(image, factors, "RED")
+        .addBands(apply_landsat_cal(image, factors, "NIR"))
+        .addBands(apply_landsat_cal(image, factors, "GREEN"))
+        .addBands(apply_landsat_cal(image, factors, "SWIR1"))
+    )
+
+    return image.addBands(cal, None, True)
+
+
+def apply_crosscal_LC8(image: ee.Image, region: str = "temp"):
+    # Source: https://www.nature.com/articles/s41558-024-02177-x#Sec14
+
+    # Temperate mountains
+    factors_temp = ee.Dictionary(
+        {
+            "RED": [0.0027, 1.0517, -0.1658, 0.0000],
+            "NIR": [0.0140, 0.8557, 0.0000, 0.0000],
+            "GREEN": [0.0047, 0.9191, 0.9488, -2.9558],
+            "SWIR1": [0.0171, 0.7561, 1.1901, -1.6099],
+        }
+    )
+    # Arctic
+    factors_arct = ee.Dictionary(
+        {
+            "RED": [-0.0012, 1.1592, -0.9166, 1.8795],
+            "GREEN": [-0.0005, 1.0412, 0.0000, 0.0000],
+            "NIR": [0.0221, 0.8442, 0.1811, 0.0000],
+            "SWIR1": [0.0071, 0.9698, 0.0685, 0.0000],
+        }
+    )
+
+    # Region selection
+    factors_dict = {"temp": factors_temp, "arctic": factors_arct}
+    if region not in ["temp", "arctic"]:
+        raise IOError("Region must be within ['temp', 'arctic']")
+    else:
+        factors = factors_dict[region]
+
+    cal = (
+        apply_landsat_cal(image, factors, "RED")
+        .addBands(apply_landsat_cal(image, factors, "NIR"))
+        .addBands(apply_landsat_cal(image, factors, "GREEN"))
+        .addBands(apply_landsat_cal(image, factors, "SWIR1"))
+    )
+
+    return image.addBands(cal, None, True)
 
 
 # =====================================================================================
