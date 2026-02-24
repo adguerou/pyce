@@ -150,7 +150,7 @@ def get_lake_shape(
     xy_lake,
     flattening_thresh=0.3,
     buffer_size: float = 8,
-    bufffer_delta: float = 1.5,
+    buffer_delta: float = 1.5,
     crs_dem: str = None,
     crs_lake: str = None,
     as_gdf=False,
@@ -217,7 +217,7 @@ def get_lake_shape(
     # Fill geometries
     if buffer_size is not None:
         lake_shp = fill_geometry(
-            lake_shp, buffer_size=buffer_size, buffer_delta=bufffer_delta
+            lake_shp, buffer_size=buffer_size, buffer_delta=buffer_delta
         )
 
     # Select geometry overlapping lake coordinates
@@ -549,7 +549,7 @@ def run_get_lake_shape(
     xy_lake,
     flattening_thresh=0.3,
     buffer_size: float = 8,
-    bufffer_delta: float = 1.5,
+    buffer_delta: float = 1.5,
     crs_dem: str = None,
     crs_lake: str = None,
     as_gdf=False,
@@ -561,7 +561,7 @@ def run_get_lake_shape(
         xy_lake=xy_lake,
         flattening_thresh=flattening_thresh,
         buffer_size=buffer_size,
-        bufffer_delta=bufffer_delta,
+        buffer_delta=buffer_delta,
         crs_dem=crs_dem,
         crs_lake=crs_lake,
         as_gdf=as_gdf,
