@@ -1,5 +1,6 @@
+import glob
 import os
-from mimetypes import init
+from typing import Union
 
 import contextily as cx
 import geopandas as gpd
@@ -19,7 +20,7 @@ from pyce_scripts import lc_distrib
 
 def get_stats_surface(
     lakes_list: list,
-    data_dir: str,
+    data_dir: Union[str, list[str]],
     save_dir: str,
     lcmap: LandCoverMap,
     metadata: dict = None,
@@ -31,29 +32,39 @@ def get_stats_surface(
     # State parameters if not set
     if metadata is None:
         metadata = {
-            "shed_ext": "sheds_202409",
-            "lake_ext": "lakes_202409",
+            "shed_ext": "sheds*",
+            "lake_ext": "lakes*",
             "landcover_ext": "landcoverS2_2017_2023",
             "dem_ext": "",
-            "coords_ext": "coords_202409",
+            "coords_ext": "coords*",
         }
+
+    # Ensure list / even of one str
+    if isinstance(data_dir, str):
+        data_dir = [data_dir]
 
     # Statistics over each lake
     # =========================
     for lake in lakes_list:
-        # Get sheds and lake data
-        shed_shp = gpd.read_file(
+        print(lake)
+
+        # Get sheds data
+        shed_file = glob.glob(
             os.path.join(
                 save_dir,
                 f"lake_by_lake/{lake}/lacsSentinelles_{metadata['shed_ext']}_{lake}.shp",
             )
         )
-        lake_shp = gpd.read_file(
+        shed_shp = gpd.read_file(shed_file[0])
+
+        # Get lake data
+        lake_file = glob.glob(
             os.path.join(
                 save_dir,
                 f"lake_by_lake/{lake}/lacsSentinelles_{metadata['lake_ext']}_{lake}.shp",
             )
         )
+        lake_shp = gpd.read_file(lake_file[0])
 
         # Get variables
         shed_area = shed_shp.area / 1e4
@@ -61,14 +72,32 @@ def get_stats_surface(
         ratio_shed = shed_area / lake_area
 
         # Get altitude lake/ max/ median
-        mnt_lake = rioxr.open_rasterio(os.path.join(data_dir, f"dem/dem_1m/{lake}.tif"))
+        mnt_flag = 0
+        for d_dir in data_dir:
+            try:
+                mnt_lake = rioxr.open_rasterio(
+                    os.path.join(d_dir, f"dem/dem_1m/{lake}.tif")
+                )
+                mnt_flag += 1
+            except IOError:
+                pass
 
-        coords = pd.read_csv(
+        if mnt_flag == 0:
+            print(f"DEM not found in 'data_dir' for {lake}")
+            continue
+
+        # lake / get coordinates / ensure to read all files in delivery
+        coords_files = glob.glob(
             os.path.join(
                 save_dir,
                 f"ancillary/lacsSentinelles_{metadata['coords_ext']}.csv",
             )
         )
+        coords = pd.DataFrame()
+        for f in coords_files:
+            cf = pd.read_csv(f)
+            coords = pd.concat([coords, cf])
+
         coords_lake = coords.loc[coords["lake_name"] == lake]
 
         alt_lake = mnt_lake.sel(
@@ -77,6 +106,7 @@ def get_stats_surface(
             method="nearest",
         ).values[0]
 
+        # max/min
         mnt_lake_clip = mnt_lake.rio.clip(
             shed_shp.to_crs(mnt_lake.rio.crs).geometry, drop=True
         )
@@ -150,7 +180,7 @@ def get_stats_surface(
         stat_shp.to_csv(
             path_or_buf=os.path.join(
                 save_dir,
-                "statistics/lacsSentineslles_statistics.csv",
+                "statistics/lacsSentinelles_statistics.csv",
             ),
             header=[
                 "lake_area [ha]",
@@ -201,7 +231,7 @@ def get_stats_percent(stat_shp, lcmap, save_dir):
         stat_shp_percent.to_csv(
             path_or_buf=os.path.join(
                 save_dir,
-                "statistics/lacsSentineslles_statistics_percent.csv",
+                "statistics/lacsSentinelles_statistics_percent.csv",
             ),
             header=[
                 "lake_area [ha]",
