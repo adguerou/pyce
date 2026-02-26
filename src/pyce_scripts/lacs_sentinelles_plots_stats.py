@@ -260,21 +260,19 @@ def plot_landcover(
     # State parameters if not set
     if metadata is None:
         metadata = {
-            "shed_ext": "sheds_202409",
-            "lake_ext": "lakes_202409",
+            "shed_ext": "sheds*",
             "landcover_ext": "landcoverS2_2017_2023",
-            "dem_ext": "",
-            "coords_ext": "coords_202409",
         }
 
     for lake in lakes_list:
         # SHED
-        shed = gpd.read_file(
+        shed_file = glob.glob(
             os.path.join(
                 data_dir,
                 f"lake_by_lake/{lake}/lacsSentinelles_{metadata['shed_ext']}_{lake}.shp",
             )
         )
+        shed = gpd.read_file(shed_file[0])
 
         # LANDCOVER
         lc_shp = gpd.read_file(
